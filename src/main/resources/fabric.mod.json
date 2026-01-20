@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "serverinsight",
+  "version": "${version}",
+  "name": "Server Insight",
+  "description": "Client-side /serverinsight command: detailed server + player + world info, TPS estimate, and plugin hints.",
+  "authors": [
+    "FlameBeast"
+  ],
+  "contact": {
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.flamebeast.serverinsight.ServerInsightClient"
+    ]
+  },
+  "mixins": [
+    "serverinsight.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.18.4",
+    "fabric-api": "*",
+    "fabric-command-api-v2": "*",
+    "fabric-networking-api-v1": "*",
+    "fabric-lifecycle-events-v1": "*",
+    "minecraft": "1.21.11",
+    "java": ">=21"
+  }
+}
