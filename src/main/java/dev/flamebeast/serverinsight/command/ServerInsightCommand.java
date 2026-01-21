@@ -72,8 +72,7 @@ public final class ServerInsightCommand {
 			printPlayerDetails(source, mc, null);
 			printWorldDetails(source);
 			printTps(source);
-			printPlugins(source);
-			printSupport(source);
+			printPlugins(source).whenComplete((ignored, throwable) -> printSupport(source));
 			return 1;
 		}
 
@@ -87,8 +86,7 @@ public final class ServerInsightCommand {
 		printPlayerDetails(source, mc, network);
 		printWorldDetails(source);
 		printTps(source);
-		printPlugins(source);
-		printSupport(source);
+		printPlugins(source).whenComplete((ignored, throwable) -> printSupport(source));
 		return 1;
 	}
 
@@ -121,11 +119,11 @@ public final class ServerInsightCommand {
 		send(source, ChatFormat.kv("Perf", value));
 	}
 
-	private static void printPlugins(FabricClientCommandSource source) {
+	private static CompletableFuture<Void> printPlugins(FabricClientCommandSource source) {
 		MinecraftClient mc = source.getClient();
 		if (mc.getNetworkHandler() == null) {
 			send(source, ChatFormat.kv("Plugins", Text.literal("N/A (not connected)").formatted(Formatting.DARK_GRAY)));
-			return;
+			return CompletableFuture.completedFuture(null);
 		}
 
 		Consumer<Text> out = msg -> send(source, msg);
@@ -134,6 +132,7 @@ public final class ServerInsightCommand {
 		printPluginsLine(out, false);
 
 		CompletableFuture<List<String>> scanFuture = ServerInsightRuntime.INSTANCE.plugins().requestCompletionScan();
+		CompletableFuture<Void> done = new CompletableFuture<>();
 		if (!scanFuture.isDone()) {
 			out.accept(ChatFormat.prefix().append(Text.literal("Scanning extra plugin hints (tab completion)...")
 				.styled(style -> style.withColor(TextColor.fromRgb(ORANGE_RGB)))));
@@ -145,7 +144,10 @@ public final class ServerInsightCommand {
 					.append(Text.literal(throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage()).formatted(Formatting.DARK_RED)));
 			}
 			printPluginsLine(out, true);
+			done.complete(null);
 		}));
+
+		return done;
 	}
 
 	private static void printPluginsLine(Consumer<Text> out, boolean includeList) {
