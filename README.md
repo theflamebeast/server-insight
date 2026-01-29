@@ -1,5 +1,6 @@
-## Support
-- Donate: https://paypal.me/theflamebeast
+## Links
+- Modrinth: https://modrinth.com/mod/server-insight
+- Support: https://paypal.me/theflamebeast
 
 ## Command
 - `/serverinsight` — Sends all details of the server in an organized structure
