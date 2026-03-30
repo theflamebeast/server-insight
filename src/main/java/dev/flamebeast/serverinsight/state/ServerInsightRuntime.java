@@ -1,8 +1,8 @@
 package dev.flamebeast.serverinsight.state;
 
 import com.mojang.brigadier.CommandDispatcher;
-import net.minecraft.command.CommandSource;
-import net.minecraft.network.packet.s2c.play.CommandSuggestionsS2CPacket;
+import net.minecraft.commands.CommandSource;
+import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
 
 public enum ServerInsightRuntime {
 	INSTANCE;
@@ -40,7 +40,7 @@ public enum ServerInsightRuntime {
 		pluginScanner.onCommandTree(dispatcher);
 	}
 
-	public void onCommandSuggestions(CommandSuggestionsS2CPacket packet) {
+	public void onCommandSuggestions(ClientboundCommandSuggestionsPacket packet) {
 		pluginScanner.onCommandSuggestions(packet);
 	}
 }

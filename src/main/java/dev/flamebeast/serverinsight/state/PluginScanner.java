@@ -2,11 +2,11 @@ package dev.flamebeast.serverinsight.state;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.tree.CommandNode;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.command.CommandSource;
-import net.minecraft.network.packet.c2s.play.RequestCommandCompletionsC2SPacket;
-import net.minecraft.network.packet.s2c.play.CommandSuggestionsS2CPacket;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.commands.CommandSource;
+import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
+import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,13 +91,13 @@ public final class PluginScanner {
 		}
 	}
 
-	public void onCommandSuggestions(CommandSuggestionsS2CPacket packet) {
+	public void onCommandSuggestions(ClientboundCommandSuggestionsPacket packet) {
 		if (packet == null || pendingFuture == null || pendingFuture.isDone()) {
 			return;
 		}
 
 		List<String> discovered = new ArrayList<>();
-		packet.getSuggestions().getList().forEach(suggestion -> {
+		packet.suggestions().getList().forEach(suggestion -> {
 			String plugin = suggestion.getText().toLowerCase(Locale.ROOT);
 			if (!fromCommandTree.contains(plugin) && fromCompletionScan.add(plugin)) {
 				discovered.add(plugin);
@@ -111,8 +111,8 @@ public final class PluginScanner {
 	}
 
 	public CompletableFuture<List<String>> requestCompletionScan() {
-		MinecraftClient client = MinecraftClient.getInstance();
-		ClientPlayNetworkHandler network = client.getNetworkHandler();
+		Minecraft client = Minecraft.getInstance();
+		ClientPacketListener network = client.getConnection();
 		if (network == null) {
 			return CompletableFuture.completedFuture(List.of());
 		}
@@ -130,7 +130,7 @@ public final class PluginScanner {
 		fromCompletionScan.clear();
 		pendingFuture = new CompletableFuture<>();
 
-		network.sendPacket(new RequestCommandCompletionsC2SPacket(pendingTransactionId, versionAlias + " "));
+		network.send(new ServerboundCommandSuggestionPacket(pendingTransactionId, versionAlias + " "));
 		return pendingFuture;
 	}
 

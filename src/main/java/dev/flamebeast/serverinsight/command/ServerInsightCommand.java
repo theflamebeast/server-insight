@@ -5,36 +5,33 @@ import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import dev.flamebeast.serverinsight.text.ChatFormat;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
-import net.minecraft.command.permission.LeveledPermissionPredicate;
-import net.minecraft.command.permission.PermissionPredicate;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.server.integrated.IntegratedServer;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.Formatting;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.GameMode;
+import net.minecraft.world.level.GameType;
 
 import java.net.InetAddress;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
-import java.net.URI;
 
 public final class ServerInsightCommand {
 	private ServerInsightCommand() {
@@ -56,92 +53,90 @@ public final class ServerInsightCommand {
 
 	public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
 		dispatcher.register(ClientCommandManager.literal("serverinsight")
-			.executes(ctx -> showSummary(ctx.getSource()))		
+			.executes(ctx -> showSummary(ctx.getSource()))
 		);
 	}
 
 	private static int showSummary(FabricClientCommandSource source) {
-		MinecraftClient mc = source.getClient();
-		ClientPlayNetworkHandler network = mc.getNetworkHandler();
+		Minecraft mc = source.getClient();
+		ClientPacketListener network = mc.getConnection();
 
 		send(source, ChatFormat.header("Server Insight"));
 		printClientDetails(source, mc);
 
-		if (mc.isIntegratedServerRunning()) {
+		if (mc.isLocalServer()) {
 			printSingleplayer(source, mc);
 			printPlayerDetails(source, mc, null);
-			printWorldDetails(source);
+			printWorldDetails(source, mc);
 			printTps(source);
-			printPlugins(source).whenComplete((ignored, throwable) -> printSupport(source));
+			printPlugins(source, mc).whenComplete((ignored, throwable) -> printSupport(source));
 			return 1;
 		}
 
 		if (network == null) {
-			send(source, ChatFormat.prefix().append(Text.literal("Not connected.").formatted(Formatting.RED)));
+			send(source, ChatFormat.prefix().append(Component.literal("Not connected.").withStyle(ChatFormatting.RED)));
 			printSupport(source);
 			return 0;
 		}
 
 		printMultiplayer(source, mc, network);
 		printPlayerDetails(source, mc, network);
-		printWorldDetails(source);
+		printWorldDetails(source, mc);
 		printTps(source);
-		printPlugins(source).whenComplete((ignored, throwable) -> printSupport(source));
+		printPlugins(source, mc).whenComplete((ignored, throwable) -> printSupport(source));
 		return 1;
 	}
 
 	private static void printSupport(FabricClientCommandSource source) {
 		String url = "https://paypal.me/theflamebeast";
-		Text link = Text.literal(url)
-			.styled(style -> style
-				.withColor(TextColor.fromFormatting(Formatting.DARK_GRAY))
-				.withUnderline(true)
+		Component link = Component.literal(url)
+			.setStyle(Style.EMPTY
+				.withColor(TextColor.fromLegacyFormat(ChatFormatting.DARK_GRAY))
+				.withUnderlined(true)
 				.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
-				.withHoverEvent(new HoverEvent.ShowText(Text.literal("Open support link").formatted(Formatting.GRAY)))
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Open support link").withStyle(ChatFormatting.GRAY)))
 			);
 
 		send(source, ChatFormat.prefix()
-			.append(Text.literal("Support: ").formatted(Formatting.DARK_GRAY))
+			.append(Component.literal("Support: ").withStyle(ChatFormatting.DARK_GRAY))
 			.append(link)
 		);
 	}
 
 	private static void printTps(FabricClientCommandSource source) {
 		double tps = ServerInsightRuntime.INSTANCE.timing().getEstimatedTps();
-		Formatting color = tps >= 19.5 ? Formatting.GREEN : tps >= 17.5 ? Formatting.YELLOW : tps >= 14.0 ? Formatting.GOLD : Formatting.RED;
+		ChatFormatting color = tps >= 19.5 ? ChatFormatting.GREEN : tps >= 17.5 ? ChatFormatting.YELLOW : tps >= 14.0 ? ChatFormatting.GOLD : ChatFormatting.RED;
 		double mspt = tps <= 0.0 ? 0.0 : (1000.0 / tps);
-		Text value = Text.literal(String.format("%.2f", tps)).formatted(color)
-			.append(Text.literal(" TPS").formatted(Formatting.GRAY))
-			.append(Text.literal("  |  ").formatted(Formatting.DARK_GRAY))
-			.append(Text.literal(String.format("%.1f", mspt)).formatted(Formatting.GRAY))
-			.append(Text.literal(" ms/t").formatted(Formatting.DARK_GRAY))
-			.append(Text.literal(" (est)").formatted(Formatting.DARK_GRAY));
+		Component value = Component.literal(String.format("%.2f", tps)).withStyle(color)
+			.append(Component.literal(" TPS").withStyle(ChatFormatting.GRAY))
+			.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY))
+			.append(Component.literal(String.format("%.1f", mspt)).withStyle(ChatFormatting.GRAY))
+			.append(Component.literal(" ms/t").withStyle(ChatFormatting.DARK_GRAY))
+			.append(Component.literal(" (est)").withStyle(ChatFormatting.DARK_GRAY));
 		send(source, ChatFormat.kv("Perf", value));
 	}
 
-	private static CompletableFuture<Void> printPlugins(FabricClientCommandSource source) {
-		MinecraftClient mc = source.getClient();
-		if (mc.getNetworkHandler() == null) {
-			send(source, ChatFormat.kv("Plugins", Text.literal("N/A (not connected)").formatted(Formatting.DARK_GRAY)));
+	private static CompletableFuture<Void> printPlugins(FabricClientCommandSource source, Minecraft mc) {
+		if (mc.getConnection() == null) {
+			send(source, ChatFormat.kv("Plugins", Component.literal("N/A (not connected)").withStyle(ChatFormatting.DARK_GRAY)));
 			return CompletableFuture.completedFuture(null);
 		}
 
-		Consumer<Text> out = msg -> send(source, msg);
+		Consumer<Component> out = msg -> send(source, msg);
 
-		// Always show what we already learned from the command tree immediately.
 		printPluginsLine(out, false);
 
 		CompletableFuture<List<String>> scanFuture = ServerInsightRuntime.INSTANCE.plugins().requestCompletionScan();
 		CompletableFuture<Void> done = new CompletableFuture<>();
 		if (!scanFuture.isDone()) {
-			out.accept(ChatFormat.prefix().append(Text.literal("Scanning extra plugin hints (tab completion)...")
-				.styled(style -> style.withColor(TextColor.fromRgb(ORANGE_RGB)))));
+			out.accept(ChatFormat.prefix().append(Component.literal("Scanning extra plugin hints (tab completion)...")
+				.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(ORANGE_RGB)))));
 		}
 
 		scanFuture.whenComplete((ignored, throwable) -> mc.execute(() -> {
 			if (throwable != null) {
-				out.accept(ChatFormat.prefix().append(Text.literal("Plugin scan failed: ").formatted(Formatting.RED))
-					.append(Text.literal(throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage()).formatted(Formatting.DARK_RED)));
+				out.accept(ChatFormat.prefix().append(Component.literal("Plugin scan failed: ").withStyle(ChatFormatting.RED))
+					.append(Component.literal(throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage()).withStyle(ChatFormatting.DARK_RED)));
 			}
 			printPluginsLine(out, true);
 			done.complete(null);
@@ -150,29 +145,29 @@ public final class ServerInsightCommand {
 		return done;
 	}
 
-	private static void printPluginsLine(Consumer<Text> out, boolean includeList) {
+	private static void printPluginsLine(Consumer<Component> out, boolean includeList) {
 		Set<String> plugins = ServerInsightRuntime.INSTANCE.plugins().combinedPlugins();
 		int fromTree = ServerInsightRuntime.INSTANCE.plugins().commandTreeCount();
 		int fromTab = ServerInsightRuntime.INSTANCE.plugins().completionCount();
 
-		Text summary = plugins.isEmpty()
-			? Text.literal("None detected").formatted(Formatting.YELLOW).copy()
-				.append(Text.literal(" (server may hide this)").formatted(Formatting.DARK_GRAY))
-			: Text.literal(String.valueOf(plugins.size())).formatted(Formatting.YELLOW).copy()
-				.append(Text.literal(" detected").formatted(Formatting.GRAY))
-				.append(Text.literal("  cmd:").formatted(Formatting.DARK_GRAY))
-				.append(Text.literal(String.valueOf(fromTree)).formatted(Formatting.DARK_GRAY))
-				.append(Text.literal(" tab:").formatted(Formatting.DARK_GRAY))
-				.append(Text.literal(String.valueOf(fromTab)).formatted(Formatting.DARK_GRAY));
+		Component summary = plugins.isEmpty()
+			? Component.literal("None detected").withStyle(ChatFormatting.YELLOW)
+				.append(Component.literal(" (server may hide this)").withStyle(ChatFormatting.DARK_GRAY))
+			: Component.literal(String.valueOf(plugins.size())).withStyle(ChatFormatting.YELLOW)
+				.append(Component.literal(" detected").withStyle(ChatFormatting.GRAY))
+				.append(Component.literal("  cmd:").withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(String.valueOf(fromTree)).withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(" tab:").withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(String.valueOf(fromTab)).withStyle(ChatFormatting.DARK_GRAY));
 
-		MutableText summaryLine = ChatFormat.kv("Plugins", summary);
+		MutableComponent summaryLine = ChatFormat.kv("Plugins", summary);
 		if (!plugins.isEmpty()) {
 			String csv = String.join(", ", plugins);
-			summaryLine.append(Text.literal("  [copy]")
-				.styled(style -> style
+			summaryLine.append(Component.literal("  [copy]")
+				.setStyle(Style.EMPTY
 					.withColor(TextColor.fromRgb(AQUA_RGB))
 					.withClickEvent(new ClickEvent.CopyToClipboard(csv))
-					.withHoverEvent(new HoverEvent.ShowText(Text.literal("Copy plugin list").formatted(Formatting.WHITE)))
+					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Copy plugin list").withStyle(ChatFormatting.WHITE)))
 				)
 			);
 		}
@@ -183,163 +178,171 @@ public final class ServerInsightCommand {
 		}
 
 		List<String> sorted = new ArrayList<>(plugins);
-		MutableText line = ChatFormat.prefix().append(Text.literal("• ").formatted(Formatting.DARK_GRAY));
+		MutableComponent line = ChatFormat.prefix().append(Component.literal("• ").withStyle(ChatFormatting.DARK_GRAY));
 		for (int i = 0; i < sorted.size(); i++) {
 			String name = sorted.get(i);
 			line.append(formatPluginName(name));
 			if (i < sorted.size() - 1) {
-				line.append(Text.literal(", ").formatted(Formatting.DARK_GRAY));
+				line.append(Component.literal(", ").withStyle(ChatFormatting.DARK_GRAY));
 			}
 		}
 		out.accept(line);
 	}
 
-	private static void printSingleplayer(FabricClientCommandSource source, MinecraftClient mc) {
-		IntegratedServer server = mc.getServer();
-		send(source, ChatFormat.kv("Type", Text.literal("Singleplayer").styled(style -> style.withColor(TextColor.fromRgb(AQUA_RGB)))));
+	private static void printSingleplayer(FabricClientCommandSource source, Minecraft mc) {
+		IntegratedServer server = mc.getSingleplayerServer();
+		send(source, ChatFormat.kv("Type", Component.literal("Singleplayer").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(AQUA_RGB)))));
 		if (server != null) {
-			send(source, ChatFormat.kv("Version", Text.literal(server.getVersion()).formatted(Formatting.YELLOW)));
+			send(source, ChatFormat.kv("Version", Component.literal(server.getServerVersion()).withStyle(ChatFormatting.YELLOW)));
 		}
-		send(source, ChatFormat.kv("Difficulty", difficultyText(source)));
+		send(source, ChatFormat.kv("Difficulty", difficultyText(mc)));
 		send(source, ChatFormat.kv("Permissions", permissionText(source)));
 	}
 
-	private static void printMultiplayer(FabricClientCommandSource source, MinecraftClient mc, ClientPlayNetworkHandler network) {
-		ServerInfo serverInfo = mc.getCurrentServerEntry();
+	private static void printMultiplayer(FabricClientCommandSource source, Minecraft mc, ClientPacketListener network) {
+		ServerData serverInfo = mc.getCurrentServer();
 		String displayAddress;
 		int port;
 
 		if (serverInfo != null) {
-			displayAddress = serverInfo.address;
-			ServerAddress parsed = ServerAddress.parse(displayAddress);
+			displayAddress = serverInfo.ip;
+			ServerAddress parsed = ServerAddress.parseString(displayAddress);
 			port = parsed.getPort();
-			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolve(parsed.getAddress()), port)));
-			Text motd = Objects.requireNonNullElse(serverInfo.label, Text.literal("N/A").formatted(Formatting.DARK_GRAY));
-			send(source, ChatFormat.kv("MOTD", motd.copy().formatted(Formatting.GRAY)));
-			send(source, ChatFormat.kv("Version", serverInfo.version.copy().formatted(Formatting.YELLOW)));
-			send(source, ChatFormat.kv("Protocol", Text.literal(String.valueOf(serverInfo.protocolVersion)).formatted(Formatting.YELLOW)));
+			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolve(parsed.getHost()), port)));
+			Component motd = Objects.requireNonNullElse(serverInfo.motd, Component.literal("N/A").withStyle(ChatFormatting.DARK_GRAY));
+			send(source, ChatFormat.kv("MOTD", motd.copy().withStyle(ChatFormatting.GRAY)));
+			send(source, ChatFormat.kv("Version", serverInfo.version.copy().withStyle(ChatFormatting.YELLOW)));
+			send(source, ChatFormat.kv("Protocol", Component.literal(String.valueOf(serverInfo.protocol)).withStyle(ChatFormatting.YELLOW)));
 		} else {
-			ServerAddress parsed = ServerAddress.parse(network.getConnection().getAddress().toString());
-			displayAddress = parsed.getAddress() + ":" + parsed.getPort();
+			ServerAddress parsed = ServerAddress.parseString(network.getConnection().getRemoteAddress().toString());
+			displayAddress = parsed.getHost() + ":" + parsed.getPort();
 			port = parsed.getPort();
-			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolve(parsed.getAddress()), port)));
+			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolve(parsed.getHost()), port)));
 		}
 
-		String brand = network.getBrand();
-		Text brandText = Text.literal(brand == null ? "unknown" : brand)
-			.styled(style -> style.withColor(TextColor.fromRgb(YELLOW_RGB)));
+		String brand = network.serverBrand();
+		Component brandText = Component.literal(brand == null ? "unknown" : brand)
+			.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(YELLOW_RGB)));
 		send(source, ChatFormat.kv("Brand", brandText));
 
 		int online = safeOnlineCount(network);
 		if (online >= 0) {
-			send(source, ChatFormat.kv("Players", Text.literal(String.valueOf(online)).formatted(Formatting.YELLOW)));
+			send(source, ChatFormat.kv("Players", Component.literal(String.valueOf(online)).withStyle(ChatFormatting.YELLOW)));
 		}
 
-		send(source, ChatFormat.kv("Difficulty", difficultyText(source)));
+		send(source, ChatFormat.kv("Difficulty", difficultyText(mc)));
 		send(source, ChatFormat.kv("Permissions", permissionText(source)));
 	}
 
-	private static void printClientDetails(FabricClientCommandSource source, MinecraftClient mc) {
-		Text value = Text.literal("Java ").formatted(Formatting.DARK_GRAY)
-			.append(Text.literal(System.getProperty("java.version", "?")).formatted(Formatting.GRAY))
-			.append(Text.literal("  |  ").formatted(Formatting.DARK_GRAY))
-			.append(Text.literal("FPS ").formatted(Formatting.DARK_GRAY))
-			.append(Text.literal(String.valueOf(mc.getCurrentFps())).formatted(Formatting.GRAY));
+	private static void printClientDetails(FabricClientCommandSource source, Minecraft mc) {
+		Component value = Component.literal("Java ").withStyle(ChatFormatting.DARK_GRAY)
+			.append(Component.literal(System.getProperty("java.version", "?")).withStyle(ChatFormatting.GRAY))
+			.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY))
+			.append(Component.literal("FPS ").withStyle(ChatFormatting.DARK_GRAY))
+			.append(Component.literal(String.valueOf(mc.getFps())).withStyle(ChatFormatting.GRAY));
 		send(source, ChatFormat.kv("Client", value));
 	}
 
-	private static void printPlayerDetails(FabricClientCommandSource source, MinecraftClient mc, ClientPlayNetworkHandler network) {
-		ClientPlayerEntity player = source.getPlayer();
+	private static void printPlayerDetails(FabricClientCommandSource source, Minecraft mc, ClientPacketListener network) {
+		LocalPlayer player = source.getPlayer();
 		if (player == null) {
 			return;
 		}
 
-		Text who = Text.literal(player.getName().getString()).styled(style -> style.withColor(TextColor.fromRgb(AQUA_RGB)))
-			.styled(style -> style.withHoverEvent(new HoverEvent.ShowText(Text.literal(player.getUuidAsString()).formatted(Formatting.GRAY))));
+		Component who = Component.literal(player.getName().getString())
+			.setStyle(Style.EMPTY
+				.withColor(TextColor.fromRgb(AQUA_RGB))
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal(player.getStringUUID()).withStyle(ChatFormatting.GRAY)))
+			);
 		send(source, ChatFormat.kv("You", who));
 
-		GameMode mode = (mc.interactionManager == null) ? null : mc.interactionManager.getCurrentGameMode();
-		Text gmText = mode == null
-			? Text.literal("unknown").styled(style -> style.withColor(TextColor.fromRgb(AQUA_RGB)))
-			: mode.getTranslatableName().copy().styled(style -> style.withColor(TextColor.fromRgb(AQUA_RGB)));
+		GameType mode = (mc.gameMode == null) ? null : mc.gameMode.getPlayerMode();
+		Component gmText = mode == null
+			? Component.literal("unknown").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(AQUA_RGB)))
+			: Component.literal(mode.getName()).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(AQUA_RGB)));
 
-		PlayerListEntry entry = (network == null) ? null : network.getPlayerListEntry(player.getUuid());
-		Text pingText = entry == null
-			? Text.literal("N/A").formatted(Formatting.GRAY)
-			: Text.literal(entry.getLatency() + " ms")
-				.formatted(entry.getLatency() <= 80 ? Formatting.GREEN : entry.getLatency() <= 150 ? Formatting.YELLOW : Formatting.RED);
+		PlayerInfo entry = (network == null) ? null : network.getPlayerInfo(player.getUUID());
+		Component pingText = entry == null
+			? Component.literal("N/A").withStyle(ChatFormatting.GRAY)
+			: Component.literal(entry.getLatency() + " ms")
+				.withStyle(entry.getLatency() <= 80 ? ChatFormatting.GREEN : entry.getLatency() <= 150 ? ChatFormatting.YELLOW : ChatFormatting.RED);
 
-		Text combined = gmText.copy()
-			.append(Text.literal("  |  ").formatted(Formatting.DARK_GRAY))
-			.append(Text.literal("Ping ").formatted(Formatting.GRAY))
+		Component combined = gmText.copy()
+			.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY))
+			.append(Component.literal("Ping ").withStyle(ChatFormatting.GRAY))
 			.append(pingText);
 		send(source, ChatFormat.kv("Mode", combined));
 
 		String coordsCopy = String.format("%.1f %.1f %.1f", player.getX(), player.getY(), player.getZ());
-		Text pos = Text.literal(String.format("%.1f, %.1f, %.1f", player.getX(), player.getY(), player.getZ())).formatted(Formatting.GRAY)
-			.styled(style -> style
+		Component pos = Component.literal(String.format("%.1f, %.1f, %.1f", player.getX(), player.getY(), player.getZ()))
+			.setStyle(Style.EMPTY
+				.withColor(TextColor.fromLegacyFormat(ChatFormatting.GRAY))
 				.withClickEvent(new ClickEvent.CopyToClipboard(coordsCopy))
-				.withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to copy coordinates").formatted(Formatting.WHITE))));
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to copy coordinates").withStyle(ChatFormatting.WHITE)))
+			);
 		send(source, ChatFormat.kv("Pos", pos));
 	}
 
-	private static void printWorldDetails(FabricClientCommandSource source) {
-		if (source.getWorld() == null) {
+	private static void printWorldDetails(FabricClientCommandSource source, Minecraft mc) {
+		var world = mc.level;
+		if (world == null) {
 			return;
 		}
 
-		Identifier dim = source.getWorld().getRegistryKey().getValue();
-		send(source, ChatFormat.kv("Dim", Text.literal(dim.toString()).formatted(Formatting.GRAY)));
+		String dim = world.dimension().location().toString();
+		send(source, ChatFormat.kv("Dim", Component.literal(dim).withStyle(ChatFormatting.GRAY)));
 
-		ClientPlayerEntity player = source.getPlayer();
+		LocalPlayer player = source.getPlayer();
 		if (player != null) {
 			String biomeId;
 			try {
-				var biomeEntry = source.getWorld().getBiome(player.getBlockPos());
-				biomeId = biomeEntry.getKey().map(key -> key.getValue().toString()).orElse("unknown");
+				var biomeEntry = world.getBiome(player.blockPosition());
+				biomeId = biomeEntry.unwrapKey().map(key -> key.location().toString()).orElse("unknown");
 			} catch (Throwable ignored) {
 				biomeId = "unknown";
 			}
-			send(source, ChatFormat.kv("Biome", Text.literal(biomeId).formatted(biomeId.equals("unknown") ? Formatting.DARK_GRAY : Formatting.GRAY)));
+			send(source, ChatFormat.kv("Biome", Component.literal(biomeId).withStyle(biomeId.equals("unknown") ? ChatFormatting.DARK_GRAY : ChatFormatting.GRAY)));
 		}
 
-		long worldTime = source.getWorld().getTimeOfDay();
+		long worldTime = world.getDayTime();
 		long day = Math.max(0, worldTime / 24000L);
 		long dayTick = Math.floorMod(worldTime, 24000L);
-		Text time = Text.literal("Day " + day + "  (tick " + dayTick + ")").formatted(Formatting.YELLOW)
-			.append(Text.literal("  |  ").formatted(Formatting.DARK_GRAY))
-			.append(Text.literal(formatMinecraftClock(dayTick)).formatted(Formatting.GRAY));
+		Component time = Component.literal("Day " + day + "  (tick " + dayTick + ")").withStyle(ChatFormatting.YELLOW)
+			.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY))
+			.append(Component.literal(formatMinecraftClock(dayTick)).withStyle(ChatFormatting.GRAY));
 		send(source, ChatFormat.kv("Time", time));
 
-		boolean raining = source.getWorld().isRaining();
-		boolean thundering = source.getWorld().isThundering();
-		Text weather = Text.literal(raining ? (thundering ? "Thunder" : "Rain") : "Clear")
-			.styled(style -> style.withColor(TextColor.fromRgb(YELLOW_RGB)));
+		boolean raining = world.isRaining();
+		boolean thundering = world.isThundering();
+		Component weather = Component.literal(raining ? (thundering ? "Thunder" : "Rain") : "Clear")
+			.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(YELLOW_RGB)));
 		send(source, ChatFormat.kv("Weather", weather));
 	}
 
-	private static MutableText clickableAddress(String shown, String resolvedIp, int port) {
+	private static MutableComponent clickableAddress(String shown, String resolvedIp, int port) {
 		String copy = shown;
 		String resolvedWithPort = resolvedIp + ":" + port;
 		boolean showResolved = resolvedIp != null && !resolvedIp.equalsIgnoreCase("localhost") && !resolvedIp.equalsIgnoreCase("127.0.0.1") && !resolvedIp.equals(shown.split(":")[0]);
 
-		MutableText base = Text.literal(shown).formatted(Formatting.GRAY)
+		MutableComponent base = Component.literal(shown)
 			.setStyle(Style.EMPTY
+				.withColor(TextColor.fromLegacyFormat(ChatFormatting.GRAY))
 				.withClickEvent(new ClickEvent.CopyToClipboard(copy))
-				.withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to copy").formatted(Formatting.WHITE)))
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to copy").withStyle(ChatFormatting.WHITE)))
 			);
 
 		if (!showResolved) {
 			return base;
 		}
 
-		return base.append(Text.literal("  (").formatted(Formatting.DARK_GRAY))
-			.append(Text.literal(resolvedWithPort).formatted(Formatting.GRAY)
+		return base.append(Component.literal("  (").withStyle(ChatFormatting.DARK_GRAY))
+			.append(Component.literal(resolvedWithPort)
 				.setStyle(Style.EMPTY
+					.withColor(TextColor.fromLegacyFormat(ChatFormatting.GRAY))
 					.withClickEvent(new ClickEvent.CopyToClipboard(resolvedWithPort))
-					.withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to copy resolved IP").formatted(Formatting.WHITE)))
+					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to copy resolved IP").withStyle(ChatFormatting.WHITE)))
 				))
-			.append(Text.literal(")").formatted(Formatting.DARK_GRAY));
+			.append(Component.literal(")").withStyle(ChatFormatting.DARK_GRAY));
 	}
 
 	private static String resolve(String host) {
@@ -356,41 +359,46 @@ public final class ServerInsightCommand {
 		}
 	}
 
-	private static Text difficultyText(FabricClientCommandSource source) {
-		Difficulty difficulty = source.getWorld().getDifficulty();
+	private static Component difficultyText(Minecraft mc) {
+		var world = mc.level;
+		if (world == null) {
+			return Component.literal("unknown").withStyle(ChatFormatting.DARK_GRAY);
+		}
+		Difficulty difficulty = world.getDifficulty();
 		int numeric = switch (difficulty) {
 			case PEACEFUL -> 0;
 			case EASY -> 1;
 			case NORMAL -> 2;
 			case HARD -> 3;
 		};
-		return difficulty.getTranslatableName().copy().formatted(Formatting.YELLOW)
-			.append(Text.literal(" (" + numeric + ")").formatted(Formatting.DARK_GRAY));
+		return difficulty.getDisplayName().copy().withStyle(ChatFormatting.YELLOW)
+			.append(Component.literal(" (" + numeric + ")").withStyle(ChatFormatting.DARK_GRAY));
 	}
 
 	private static String formatMinecraftClock(long dayTick) {
-		// In vanilla: tick 0 == 06:00. Shift so 00:00 aligns at tick 18000.
 		long adjusted = Math.floorMod(dayTick + 6000L, 24000L);
 		int hours = (int) (adjusted / 1000L);
 		int minutes = (int) ((adjusted % 1000L) * 60L / 1000L);
 		return String.format("%02d:%02d", hours, minutes);
 	}
 
-	private static int safeOnlineCount(ClientPlayNetworkHandler network) {
+	private static int safeOnlineCount(ClientPacketListener network) {
 		try {
-			return network.getPlayerList().size();
+			return network.getOnlinePlayers().size();
 		} catch (Throwable ignored) {
 			return -1;
 		}
 	}
 
-	private static Text permissionText(FabricClientCommandSource source) {
+	private static Component permissionText(FabricClientCommandSource source) {
+		LocalPlayer player = source.getPlayer();
 		int level = 0;
-		ClientPlayerEntity player = source.getPlayer();
 		if (player != null) {
-			PermissionPredicate perm = player.getPermissions();
-			if (perm instanceof LeveledPermissionPredicate leveled) {
-				level = leveled.getLevel().getLevel();
+			for (int i = 4; i >= 1; i--) {
+				if (player.hasPermissions(i)) {
+					level = i;
+					break;
+				}
 			}
 		}
 
@@ -402,10 +410,10 @@ public final class ServerInsightCommand {
 			case 4 -> "Owner/OP";
 			default -> "Level " + level;
 		};
-		return Text.literal(level + " (" + label + ")").formatted(Formatting.YELLOW);
+		return Component.literal(level + " (" + label + ")").withStyle(ChatFormatting.YELLOW);
 	}
 
-	private static Text formatPluginName(String name) {
+	private static Component formatPluginName(String name) {
 		String lower = name.toLowerCase(Locale.ROOT);
 		boolean security = lower.contains("anticheat")
 			|| lower.contains("anti-cheat")
@@ -423,24 +431,24 @@ public final class ServerInsightCommand {
 			? TextColor.fromRgb(ORANGE_RGB)
 			: (popular ? TextColor.fromRgb(POPULAR_RGB) : TextColor.fromRgb(YELLOW_RGB));
 
-		MutableText hover = Text.literal("Click to copy").formatted(Formatting.WHITE);
+		MutableComponent hover = Component.literal("Click to copy").withStyle(ChatFormatting.WHITE);
 		if (security) {
-			hover.append(Text.literal("\nLikely security/anti-cheat").styled(style -> style.withColor(TextColor.fromRgb(ORANGE_RGB))));
+			hover.append(Component.literal("\nLikely security/anti-cheat").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(ORANGE_RGB))));
 		} else if (popular) {
-			hover.append(Text.literal("\nPopular plugin").styled(style -> style.withColor(TextColor.fromRgb(POPULAR_RGB))));
+			hover.append(Component.literal("\nPopular plugin").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(POPULAR_RGB))));
 		} else {
-			hover.append(Text.literal("\nDetected via commands/tab").formatted(Formatting.DARK_GRAY));
+			hover.append(Component.literal("\nDetected via commands/tab").withStyle(ChatFormatting.DARK_GRAY));
 		}
 
-		return Text.literal(name)
-			.styled(style -> style.withColor(color))
-			.styled(style -> style
+		return Component.literal(name)
+			.setStyle(Style.EMPTY
+				.withColor(color)
 				.withClickEvent(new ClickEvent.CopyToClipboard(name))
 				.withHoverEvent(new HoverEvent.ShowText(hover))
 			);
 	}
 
-	private static void send(FabricClientCommandSource source, Text msg) {
+	private static void send(FabricClientCommandSource source, Component msg) {
 		source.sendFeedback(msg);
 	}
 }

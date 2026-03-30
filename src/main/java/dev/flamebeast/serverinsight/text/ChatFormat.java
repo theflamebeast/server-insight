@@ -1,31 +1,31 @@
 package dev.flamebeast.serverinsight.text;
 
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Formatting;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.ChatFormatting;
 
 public final class ChatFormat {
 	private ChatFormat() {
 	}
 
-	public static MutableText prefix() {
-		MutableText brand = gradientBold("Server Insight", 0xFF8800, 0xCC0055);
-		return brand.append(Text.literal(" ").formatted(Formatting.DARK_GRAY));
+	public static MutableComponent prefix() {
+		MutableComponent brand = gradientBold("Server Insight", 0xFF8800, 0xCC0055);
+		return brand.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
 	}
 
-	private static MutableText gradientBold(String text, int startRgb, int endRgb) {
+	private static MutableComponent gradientBold(String text, int startRgb, int endRgb) {
 		if (text.isEmpty()) {
-			return Text.empty();
+			return Component.empty();
 		}
 
-		MutableText out = Text.empty();
+		MutableComponent out = Component.empty();
 		int n = Math.max(1, text.length() - 1);
 		for (int i = 0; i < text.length(); i++) {
 			double t = (double) i / (double) n;
 			int rgb = lerpRgb(startRgb, endRgb, t);
 			out.append(
-				Text.literal(String.valueOf(text.charAt(i)))
+				Component.literal(String.valueOf(text.charAt(i)))
 					.setStyle(out.getStyle().withColor(TextColor.fromRgb(rgb)).withBold(true))
 			);
 		}
@@ -45,20 +45,20 @@ public final class ChatFormat {
 		return (rr << 16) | (rg << 8) | rb;
 	}
 
-	public static MutableText header(String title) {
+	public static MutableComponent header(String title) {
 		return prefix()
-			.append(Text.literal(title).formatted(Formatting.YELLOW));
+			.append(Component.literal(title).withStyle(ChatFormatting.YELLOW));
 	}
 
-	public static MutableText label(String label) {
-		return Text.literal("• ").formatted(Formatting.DARK_GRAY)
-			.append(Text.literal(label).formatted(Formatting.GRAY));
+	public static MutableComponent label(String label) {
+		return Component.literal("• ").withStyle(ChatFormatting.DARK_GRAY)
+			.append(Component.literal(label).withStyle(ChatFormatting.GRAY));
 	}
 
-	public static MutableText kv(String key, Text value) {
+	public static MutableComponent kv(String key, Component value) {
 		return prefix()
 			.append(label(key))
-			.append(Text.literal(": ").formatted(Formatting.DARK_GRAY))
+			.append(Component.literal(": ").withStyle(ChatFormatting.DARK_GRAY))
 			.append(value);
 	}
 }
