@@ -1,23 +1,43 @@
-# Server Insight
+## Links
+- Modrinth: https://modrinth.com/mod/server-insight
+- Support: https://paypal.me/theflamebeast
 
-Client-side Fabric mod that shows detailed server/player/world info in chat.
+## Command
+- `/serverinsight` — Sends all details of the server in an organized structure
 
-## Support
-- Donate: https://paypal.me/theflamebeast
+## Features
+- **Server details**: address, MOTD, version, brand (when available)
+- **Plugins**:
+  - Reads namespaces from the command tree
+  - Checks Tab-completion
+  - Includes a **copy button** for the detected list and individual plugins
+  - Color codes popular plugins and security/anticheat plugins
+- **Player details**: gamemode, ping, coordinates
+- **World details**: dimension, biome, time, weather
+- **Performance estimate**: TPS + ms/t (derived from server time update packets)
 
-## Commands
-- `/serverinsight` — shows detailed info including address/MOTD/version/brand, your gamemode + ping, coordinates, dimension + biome, time + weather, TPS+mspt estimate, and plugin hints (+ copy button)
+## Note
+- **TPS and ms/t are estimates**, based on timing packets the server sends.
+- **Plugin detection is not guaranteed** — many servers intentionally hide or restrict this information.
+- This mod is **client-side** and does not need to be installed on the server.
 
-## Notes
-- TPS is an estimate from server time update packets.
-- Plugin lists are best-effort; many servers intentionally hide them.
+## Installation
+1. Install **Fabric Loader** for your Minecraft version
+2. Install **Fabric API**
+3. Drop the `.jar` into your `mods` folder
+4. Launch the game and run `/serverinsight`
 
-## Versioning
-This project follows Semantic Versioning (Major.Minor.Patch).
+## Compatibility
+- **Loader**: Fabric
+- **Environment**: Client
+- **Minecraft**: 1.21.11 (update this if you support more versions)
 
-- Bug fixes: `1.0.1`, `1.0.2`, ...
-- New features (backwards compatible): `1.1.0`, `1.2.0`, ...
-- Breaking changes: `2.0.0`, ...
+## Preview
+![Preview](https://cdn.modrinth.com/data/cdJrY41V/images/0fc75292051ee8a174f5f826a19a489b81db2de0.png)
 
-## Development
-- `./gradlew build`
+## [Support / Suggestions](https://github.com/theflamebeast/serverinsight/issues)
+If you find a server where output looks wrong, please include:
+- Minecraft version
+- Fabric Loader version
+- Fabric API version
+- The exact chat output from `/serverinsight`
