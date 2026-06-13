@@ -16,3 +16,6 @@ bin/
 # OS
 Thumbs.db
 .DS_Store
+
+# Copilot
+.github/copilot-instructions.md

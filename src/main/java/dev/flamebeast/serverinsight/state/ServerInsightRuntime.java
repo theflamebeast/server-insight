@@ -1,7 +1,6 @@
 package dev.flamebeast.serverinsight.state;
 
 import com.mojang.brigadier.CommandDispatcher;
-import net.minecraft.commands.CommandSource;
 import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
 
 public enum ServerInsightRuntime {
@@ -36,7 +35,7 @@ public enum ServerInsightRuntime {
 		timingTracker.onWorldTimeUpdateMillis(nowMillis);
 	}
 
-	public void onCommandTree(CommandDispatcher<CommandSource> dispatcher) {
+	public void onCommandTree(CommandDispatcher<?> dispatcher) {
 		pluginScanner.onCommandTree(dispatcher);
 	}
 

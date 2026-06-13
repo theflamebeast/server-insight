@@ -30,7 +30,8 @@
 ## Compatibility
 - **Loader**: Fabric
 - **Environment**: Client
-- **Minecraft**: 1.21.11 (update this if you support more versions)
+- **Minecraft**: 26.1.2
+- **Java**: 25+
 
 ## Preview
 ![Preview](https://cdn.modrinth.com/data/cdJrY41V/images/0fc75292051ee8a174f5f826a19a489b81db2de0.png)
@@ -41,3 +42,4 @@ If you find a server where output looks wrong, please include:
 - Fabric Loader version
 - Fabric API version
 - The exact chat output from `/serverinsight`
+ from `/serverinsight`

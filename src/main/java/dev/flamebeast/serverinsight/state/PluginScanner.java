@@ -4,7 +4,6 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.tree.CommandNode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.commands.CommandSource;
 import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
 import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket;
 
@@ -60,7 +59,7 @@ public final class PluginScanner {
 		}
 	}
 
-	public void onCommandTree(CommandDispatcher<CommandSource> dispatcher) {
+	public void onCommandTree(CommandDispatcher<?> dispatcher) {
 		fromCommandTree.clear();
 		versionAlias = null;
 
@@ -68,12 +67,12 @@ public final class PluginScanner {
 			return;
 		}
 
-		CommandNode<CommandSource> root = dispatcher.getRoot();
+		CommandNode<?> root = dispatcher.getRoot();
 		if (root == null) {
 			return;
 		}
 
-		for (CommandNode<CommandSource> node : root.getChildren()) {
+		for (CommandNode<?> node : root.getChildren()) {
 			String name = node.getName();
 			String lower = name.toLowerCase(Locale.ROOT);
 
@@ -92,13 +91,13 @@ public final class PluginScanner {
 	}
 
 	public void onCommandSuggestions(ClientboundCommandSuggestionsPacket packet) {
-		if (packet == null || pendingFuture == null || pendingFuture.isDone()) {
+		if (packet == null || pendingFuture == null || pendingFuture.isDone() || packet.id() != pendingTransactionId) {
 			return;
 		}
 
 		List<String> discovered = new ArrayList<>();
-		packet.suggestions().getList().forEach(suggestion -> {
-			String plugin = suggestion.getText().toLowerCase(Locale.ROOT);
+		packet.suggestions().forEach(suggestion -> {
+			String plugin = suggestion.text().toLowerCase(Locale.ROOT);
 			if (!fromCommandTree.contains(plugin) && fromCompletionScan.add(plugin)) {
 				discovered.add(plugin);
 			}

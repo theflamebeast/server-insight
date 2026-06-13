@@ -3,7 +3,7 @@ package dev.flamebeast.serverinsight.mixin;
 import com.mojang.brigadier.CommandDispatcher;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.commands.CommandSource;
+import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
 import net.minecraft.network.protocol.game.ClientboundCommandsPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ClientPacketListener.class)
 public abstract class ClientPlayNetworkHandlerMixin {
 	@Shadow
-	private CommandDispatcher<CommandSource> commands;
+	private CommandDispatcher<ClientSuggestionProvider> commands;
 
 	@Inject(method = "handleSetTime", at = @At("HEAD"))
 	private void serverinsight_onWorldTimeUpdate(ClientboundSetTimePacket packet, CallbackInfo ci) {
@@ -28,7 +28,7 @@ public abstract class ClientPlayNetworkHandlerMixin {
 		ServerInsightRuntime.INSTANCE.onCommandTree(this.commands);
 	}
 
-	@Inject(method = "handleTabListQueryReply", at = @At("TAIL"))
+	@Inject(method = "handleCommandSuggestions", at = @At("TAIL"))
 	private void serverinsight_onCommandSuggestions(ClientboundCommandSuggestionsPacket packet, CallbackInfo ci) {
 		ServerInsightRuntime.INSTANCE.onCommandSuggestions(packet);
 	}

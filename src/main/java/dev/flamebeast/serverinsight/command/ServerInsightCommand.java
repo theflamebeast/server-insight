@@ -3,7 +3,7 @@ package dev.flamebeast.serverinsight.command;
 import com.mojang.brigadier.CommandDispatcher;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import dev.flamebeast.serverinsight.text.ChatFormat;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -18,7 +18,9 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
-import net.minecraft.server.integrated.IntegratedServer;
+import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.server.permissions.PermissionSet;
+import net.minecraft.server.permissions.Permissions;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.GameType;
 
@@ -52,7 +54,7 @@ public final class ServerInsightCommand {
 	);
 
 	public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
-		dispatcher.register(ClientCommandManager.literal("serverinsight")
+		dispatcher.register(ClientCommands.literal("serverinsight")
 			.executes(ctx -> showSummary(ctx.getSource()))
 		);
 	}
@@ -289,7 +291,7 @@ public final class ServerInsightCommand {
 			return;
 		}
 
-		String dim = world.dimension().location().toString();
+		String dim = world.dimension().identifier().toString();
 		send(source, ChatFormat.kv("Dim", Component.literal(dim).withStyle(ChatFormatting.GRAY)));
 
 		LocalPlayer player = source.getPlayer();
@@ -297,14 +299,14 @@ public final class ServerInsightCommand {
 			String biomeId;
 			try {
 				var biomeEntry = world.getBiome(player.blockPosition());
-				biomeId = biomeEntry.unwrapKey().map(key -> key.location().toString()).orElse("unknown");
+				biomeId = biomeEntry.unwrapKey().map(key -> key.identifier().toString()).orElse("unknown");
 			} catch (Throwable ignored) {
 				biomeId = "unknown";
 			}
 			send(source, ChatFormat.kv("Biome", Component.literal(biomeId).withStyle(biomeId.equals("unknown") ? ChatFormatting.DARK_GRAY : ChatFormatting.GRAY)));
 		}
 
-		long worldTime = world.getDayTime();
+		long worldTime = world.getDefaultClockTime();
 		long day = Math.max(0, worldTime / 24000L);
 		long dayTick = Math.floorMod(worldTime, 24000L);
 		Component time = Component.literal("Day " + day + "  (tick " + dayTick + ")").withStyle(ChatFormatting.YELLOW)
@@ -391,15 +393,16 @@ public final class ServerInsightCommand {
 	}
 
 	private static Component permissionText(FabricClientCommandSource source) {
-		LocalPlayer player = source.getPlayer();
 		int level = 0;
-		if (player != null) {
-			for (int i = 4; i >= 1; i--) {
-				if (player.hasPermissions(i)) {
-					level = i;
-					break;
-				}
-			}
+		PermissionSet permissions = source.permissions();
+		if (permissions.hasPermission(Permissions.COMMANDS_OWNER)) {
+			level = 4;
+		} else if (permissions.hasPermission(Permissions.COMMANDS_ADMIN)) {
+			level = 3;
+		} else if (permissions.hasPermission(Permissions.COMMANDS_GAMEMASTER)) {
+			level = 2;
+		} else if (permissions.hasPermission(Permissions.COMMANDS_MODERATOR)) {
+			level = 1;
 		}
 
 		String label = switch (level) {
