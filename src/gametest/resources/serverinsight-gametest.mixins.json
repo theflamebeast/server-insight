@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.flamebeast.serverinsight.gametest.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ChatCaptureMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

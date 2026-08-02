@@ -122,7 +122,42 @@ Permissions (`PermissionSet` / `Permissions.COMMANDS_*`) and identifier accessor
 (`dimension().identifier()`, `unwrapKey()`) are the other two spots that have
 moved historically — check them if the build reddens there.
 
-## 5. Finish
+## 5. Reclaim the disk the old version is now holding
+
+Every bump strands roughly **220 MB** of Loom cache that nothing will ever read
+again, and Gradle never prunes it. Do this once the new version builds and the
+gametest passes — not before, in case you have to go back.
+
+Check first that no other repo in the workspace still targets the old version.
+The two Fabric mods here move together, so this is a real check, not a formality:
+
+```bash
+grep -h minecraft_version ~/Documents/GitHub/*/gradle.properties
+```
+
+If the old version appears nowhere, delete:
+
+- `~/.gradle/caches/fabric-loom/<OLD_MC>/`
+- `~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/*/<OLD_MC>/` — one
+  entry per variant (`minecraft-merged-deobf`, `minecraft-clientonly-deobf`,
+  `minecraft-common-deobf`, plus `-intermediary` variants on pre-26.1 versions)
+- `<project>/.gradle/<OLD_GRADLE_VERSION>/` — project-local build state left
+  behind by the wrapper bump. Small, but it is the "why are there two version
+  folders here?" one.
+
+**Do NOT delete:**
+
+- `~/.gradle/caches/fabric-loom/assets/` — content-addressed and shared across
+  every Minecraft version, so the current one still needs nearly all of it. It is
+  the biggest directory and the most tempting; re-downloading is thousands of
+  tiny files.
+- `~/.gradle/wrapper/dists/*` for any version another repo pins. Check with
+  `grep -h distributionUrl ~/Documents/GitHub/*/gradle/wrapper/gradle-wrapper.properties`
+  — the non-Fabric repos here sit on older Gradle and will re-download.
+
+Then re-run `./gradlew build` and confirm it does not re-download anything.
+
+## 6. Finish
 
 Update `README.md`'s Compatibility section in the **same commit** as the bump —
 it is what users read to decide whether the jar works, and a stale version line

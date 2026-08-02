@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -112,6 +113,8 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 	 * reply back — so this single wait covers the whole async path plus the third mixin.
 	 */
 	private static void assertCommandRunsAndCompletesScan(ClientGameTestContext context) {
+		CapturedChat.clear();
+
 		TestInput input = context.getInput();
 		input.pressKey(options -> options.keyChat);
 		context.waitTick();
@@ -126,6 +129,49 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			if (!detected.contains(expected)) {
 				throw new AssertionError("tab-completion scan missed " + expected + ", found: " + detected);
 			}
+		}
+
+		assertOutputLines();
+	}
+
+	/**
+	 * The state assertions prove the command ran; these prove it printed the right
+	 * thing. Deliberately matched on labels and plain text only — colors, ordering and
+	 * component structure churn every Minecraft release, and pinning them would buy
+	 * nothing but false failures. The screenshot artifact covers appearance.
+	 */
+	private static void assertOutputLines() {
+		List<String> lines = CapturedChat.serverInsightLines();
+
+		if (lines.isEmpty()) {
+			throw new AssertionError("/serverinsight printed nothing to chat");
+		}
+
+		// Every line carries the branded prefix — that is the whole point of ChatFormat.
+		String[][] required = {
+			{"Address"},
+			{"Brand"},
+			{"Perf", "TPS", "ms/t"},
+			{"Plugins", "detected"},
+			{"Pos"},
+			{"Dim"},
+			{"Time"},
+			{"Weather"},
+			{"testpluginalpha"},
+		};
+
+		for (String[] needles : required) {
+			if (!CapturedChat.hasLineContaining(needles)) {
+				throw new AssertionError("no output line matched " + String.join(" + ", needles)
+					+ "\nactual output:\n  " + String.join("\n  ", lines));
+			}
+		}
+
+		// The honesty labels. TPS and plugin detection are both guesses, and the mod
+		// promises users it says so — a refactor that drops these is a real regression.
+		if (!CapturedChat.hasLineContaining("(est)")) {
+			throw new AssertionError("the TPS line lost its \"(est)\" qualifier\nactual output:\n  "
+				+ String.join("\n  ", lines));
 		}
 	}
 }

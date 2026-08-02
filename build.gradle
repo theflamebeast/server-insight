@@ -32,6 +32,13 @@ fabricApi {
 	}
 }
 
+// runClientGameTest is not part of `build` (it needs a display and takes minutes), so
+// without this a compile error in src/gametest would not surface until CI ran the
+// separate gametest job. Compiling it here is nearly free.
+tasks.named('build') {
+	dependsOn 'gametestClasses'
+}
+
 processResources {
 	inputs.property 'version', project.version
 	filesMatching('fabric.mod.json') {
