@@ -27,6 +27,9 @@ public final class FakePluginCommands implements ModInitializer {
 	 */
 	private static final String[] SUGGESTED_PLUGINS = {"TestPluginAlpha", "TestPluginBeta"};
 
+	/** Only reachable through the second probe alias, so finding it proves both were sent. */
+	private static final String SECOND_PROBE_PLUGIN = "TestPluginGamma";
+
 	@Override
 	public void onInitialize() {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
@@ -48,6 +51,18 @@ public final class FakePluginCommands implements ModInitializer {
 			}
 
 			dispatcher.register(version);
+
+			// A second probe alias, to prove the scanner probes every alias the server
+			// advertises rather than stopping at the first. Unlike /version this one has
+			// no vanilla counterpart, so it needs no op workaround.
+			LiteralArgumentBuilder<CommandSourceStack> plugins =
+				LiteralArgumentBuilder.<CommandSourceStack>literal("plugins").executes(ctx -> 1);
+			plugins.then(LiteralArgumentBuilder.<CommandSourceStack>literal(SECOND_PROBE_PLUGIN).executes(ctx -> 1));
+			dispatcher.register(plugins);
+
+			// Fingerprint bait: /lp is LuckPerms' command, so the scanner should infer
+			// LuckPerms from the name alone, with no packet sent and no namespace.
+			dispatcher.register(LiteralArgumentBuilder.<CommandSourceStack>literal("lp").executes(ctx -> 1));
 
 			// A node has to be executable to be sent to the client at all, so this needs
 			// its own executes() even though nothing ever runs it.

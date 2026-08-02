@@ -229,7 +229,10 @@ public final class ServerInsightCommand {
 		Set<String> plugins = ServerInsightRuntime.INSTANCE.plugins().combinedPlugins();
 		int fromTree = ServerInsightRuntime.INSTANCE.plugins().commandTreeCount();
 		int fromTab = ServerInsightRuntime.INSTANCE.plugins().completionCount();
+		int guessed = ServerInsightRuntime.INSTANCE.plugins().guessCount();
 
+		// The per-source breakdown is the user's only handle on how much to trust the
+		// total, so guesses get their own counter rather than being folded in silently.
 		Component summary = plugins.isEmpty()
 			? Component.literal("None detected").withStyle(ChatFormatting.YELLOW)
 				.append(Component.literal(" (" + emptyPluginsReason(family) + ")").withStyle(ChatFormatting.DARK_GRAY))
@@ -238,7 +241,9 @@ public final class ServerInsightCommand {
 				.append(Component.literal("  cmd:").withStyle(ChatFormatting.DARK_GRAY))
 				.append(Component.literal(String.valueOf(fromTree)).withStyle(ChatFormatting.DARK_GRAY))
 				.append(Component.literal(" tab:").withStyle(ChatFormatting.DARK_GRAY))
-				.append(Component.literal(String.valueOf(fromTab)).withStyle(ChatFormatting.DARK_GRAY));
+				.append(Component.literal(String.valueOf(fromTab)).withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(" guess:").withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(String.valueOf(guessed)).withStyle(ChatFormatting.DARK_GRAY));
 
 		MutableComponent summaryLine = ChatFormat.kv("Plugins", summary);
 		if (!plugins.isEmpty()) {
@@ -258,10 +263,11 @@ public final class ServerInsightCommand {
 		}
 
 		List<String> sorted = new ArrayList<>(plugins);
+		Set<String> guesses = ServerInsightRuntime.INSTANCE.plugins().guessedPlugins();
 		MutableComponent line = ChatFormat.prefix().append(Component.literal("• ").withStyle(ChatFormatting.DARK_GRAY));
 		for (int i = 0; i < sorted.size(); i++) {
 			String name = sorted.get(i);
-			line.append(formatPluginName(name));
+			line.append(formatPluginName(name, guesses.contains(name)));
 			if (i < sorted.size() - 1) {
 				line.append(Component.literal(", ").withStyle(ChatFormatting.DARK_GRAY));
 			}
@@ -504,7 +510,7 @@ public final class ServerInsightCommand {
 		return Component.literal(level + " (" + label + ")").withStyle(ChatFormatting.YELLOW);
 	}
 
-	private static Component formatPluginName(String name) {
+	private static Component formatPluginName(String name, boolean guessed) {
 		String lower = name.toLowerCase(Locale.ROOT);
 		boolean security = lower.contains("anticheat")
 			|| lower.contains("anti-cheat")
@@ -518,12 +524,20 @@ public final class ServerInsightCommand {
 			|| lower.contains("themis");
 
 		boolean popular = POPULAR_PLUGINS.contains(lower);
-		TextColor color = security
-			? TextColor.fromRgb(ORANGE_RGB)
-			: (popular ? TextColor.fromRgb(POPULAR_RGB) : TextColor.fromRgb(YELLOW_RGB));
+
+		// Guesses are greyed out rather than coloured by category — the point of the
+		// colour is confidence, and an inferred plugin has none to convey.
+		TextColor color = guessed
+			? TextColor.fromLegacyFormat(ChatFormatting.GRAY)
+			: security
+				? TextColor.fromRgb(ORANGE_RGB)
+				: (popular ? TextColor.fromRgb(POPULAR_RGB) : TextColor.fromRgb(YELLOW_RGB));
 
 		MutableComponent hover = Component.literal("Click to copy").withStyle(ChatFormatting.WHITE);
-		if (security) {
+		if (guessed) {
+			hover.append(Component.literal("\nGUESS — inferred from a command name, not confirmed")
+				.withStyle(ChatFormatting.GRAY));
+		} else if (security) {
 			hover.append(Component.literal("\nLikely security/anti-cheat").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(ORANGE_RGB))));
 		} else if (popular) {
 			hover.append(Component.literal("\nPopular plugin").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(POPULAR_RGB))));
@@ -531,12 +545,16 @@ public final class ServerInsightCommand {
 			hover.append(Component.literal("\nDetected via commands/tab").withStyle(ChatFormatting.DARK_GRAY));
 		}
 
-		return Component.literal(name)
-			.setStyle(Style.EMPTY
-				.withColor(color)
-				.withClickEvent(new ClickEvent.CopyToClipboard(name))
-				.withHoverEvent(new HoverEvent.ShowText(hover))
-			);
+		MutableComponent label = Component.literal(name);
+		if (guessed) {
+			label.append(Component.literal("?").withStyle(ChatFormatting.DARK_GRAY));
+		}
+
+		return label.setStyle(Style.EMPTY
+			.withColor(color)
+			.withClickEvent(new ClickEvent.CopyToClipboard(name))
+			.withHoverEvent(new HoverEvent.ShowText(hover))
+		);
 	}
 
 	private static void send(FabricClientCommandSource source, Component msg) {

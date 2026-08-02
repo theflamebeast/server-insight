@@ -12,9 +12,11 @@
   connected through BungeeCord, Waterfall or Velocity.
 - **Server-side mods**: lists mods the server declares network channels for — something no other
   client-side mod surfaces
-- **Plugins**:
+- **Plugins**, detected three ways and labelled by confidence:
   - Reads namespaces from the command tree
-  - Checks Tab-completion
+  - Tab-completes every plugin-listing command the server advertises (`/version`, `/plugins`, `/pl`, …)
+  - Recognises ~50 well-known commands (`/lp` → LuckPerms, `/co` → CoreProtect) — these are
+    **guesses**, shown greyed out with a `?` and counted separately as `guess:`
   - Includes a **copy button** for the detected list and individual plugins
   - Color codes popular plugins and security/anticheat plugins
 - **Player details**: gamemode, ping, coordinates
@@ -25,6 +27,8 @@
 - **TPS is an estimate**, measured from the tick counter in the time packets the server sends. If a
   server doesn't send them, the mod says **unknown** rather than inventing a number.
 - **Plugin detection is not guaranteed** — many servers intentionally hide or restrict this information.
+  The `cmd:` / `tab:` / `guess:` breakdown tells you where each result came from; anything marked
+  `guess:` was inferred from a command name and is not confirmed.
 - **Mod detection is a lower bound.** A server-side mod that never talks to clients is invisible to it.
 - This mod is **client-side** and does not need to be installed on the server.
 

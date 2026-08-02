@@ -2,6 +2,7 @@ package dev.flamebeast.serverinsight.gametest;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.flamebeast.serverinsight.detect.ServerMods;
+import dev.flamebeast.serverinsight.state.AddressResolver;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -54,6 +55,8 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			assertCommandTreeMixinFired(context);
 			assertTimeMixinFired(context);
 			assertServerModsDetected(context);
+			assertFingerprintGuess(context);
+			assertAddressResolverWorks(context);
 			assertCommandRunsAndCompletesScan(context);
 
 			// Not compared against a reference — it is uploaded as a CI artifact so the
@@ -144,13 +147,57 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 
 		Set<String> detected = context.computeOnClient(mc -> ServerInsightRuntime.INSTANCE.plugins().combinedPlugins());
 
-		for (String expected : new String[]{"testpluginalpha", "testpluginbeta"}) {
+		// Gamma is only reachable via the second probe alias (/plugins), so requiring it
+		// proves every advertised alias got probed, not just the first.
+		for (String expected : new String[]{"testpluginalpha", "testpluginbeta", "testplugingamma"}) {
 			if (!detected.contains(expected)) {
 				throw new AssertionError("tab-completion scan missed " + expected + ", found: " + detected);
 			}
 		}
 
 		assertOutputLines();
+	}
+
+	/**
+	 * /lp is LuckPerms' command, registered on the test server with no namespace and no
+	 * suggestions — so the only way it can be detected is the fingerprint table, and the
+	 * only correct way to report it is as a guess.
+	 */
+	private static void assertFingerprintGuess(ClientGameTestContext context) {
+		Set<String> guesses = context.computeOnClient(mc -> ServerInsightRuntime.INSTANCE.plugins().guessedPlugins());
+
+		if (!guesses.contains("LuckPerms")) {
+			throw new AssertionError("expected LuckPerms to be inferred from /lp, guesses were: " + guesses);
+		}
+
+		// A guess must never be laundered into the confirmed buckets.
+		Set<String> all = context.computeOnClient(mc -> ServerInsightRuntime.INSTANCE.plugins().combinedPlugins());
+		if (!all.contains("LuckPerms")) {
+			throw new AssertionError("guessed plugins should still appear in the combined list");
+		}
+	}
+
+	/**
+	 * The join-time DNS path never runs in this test, because the gametest connects to
+	 * localhost and the command short-circuits that. Exercise the resolver directly
+	 * instead, on a fresh instance so runtime state is untouched.
+	 */
+	private static void assertAddressResolverWorks(ClientGameTestContext context) {
+		AddressResolver resolver = new AddressResolver();
+		resolver.beginResolve("localhost");
+
+		context.waitFor(mc -> resolver.resolvedFor("localhost") != null, SLOW_TIMEOUT);
+
+		String ip = resolver.resolvedFor("localhost");
+		if (!"127.0.0.1".equals(ip) && !"0:0:0:0:0:0:0:1".equals(ip)) {
+			throw new AssertionError("localhost resolved to something unexpected: " + ip);
+		}
+
+		// The host guard is what stops a slow lookup from a previous server landing on
+		// the next one's address line.
+		if (resolver.resolvedFor("some.other.host") != null) {
+			throw new AssertionError("resolver returned a result for a host it was not asked about");
+		}
 	}
 
 	/**
@@ -176,7 +223,9 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			{"Perf", "TPS"},
 			{"Mods", "declared"},
 			{"fabric-api"},
-			{"Plugins", "detected"},
+			{"Plugins", "detected", "guess:"},
+			// The trailing "?" marks an inferred plugin in the list line.
+			{"LuckPerms?"},
 			{"Pos"},
 			{"Dim"},
 			{"Time"},

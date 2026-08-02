@@ -77,6 +77,7 @@ state/PluginScanner          plugin detection (command tree + one tab-completion
 state/AddressResolver        async DNS, started on join so the command never blocks
 detect/ServerSoftware        pure: brand string -> Paper/Fabric/vanilla/proxy + family
 detect/ServerMods            pure: server-declared channels -> server-side mod ids
+detect/CommandFingerprints   pure: command name -> plugin it implies (a GUESS)
 text/ChatFormat              branded prefix, gradient header, key/value lines
 mixin/…NetworkHandlerMixin   the only mixin: 3 injects on ClientPacketListener
 ```
@@ -104,11 +105,36 @@ The mixin never formats and the command never touches packets. Keep it that way.
   from elsewhere does not. Hop back with `mc.execute(...)` before touching client
   state or sending chat — `ServerInsightCommand.printPlugins` already does.
 
-## The plugin scan is the only thing we send
+## Plugin detection has three confidence tiers — keep them separate
 
-The mod is passive except for one packet: a single
-`ServerboundCommandSuggestionPacket` asking for completions on `/version `,
-fired **only** when the user runs the command, with a 100-tick timeout.
+1. **Namespaced commands** (`essentials:home` → essentials). Passive, high confidence.
+2. **Tab-completion probes.** The only thing this mod sends.
+3. **Command-name fingerprints** (`/lp` → LuckPerms, `detect/CommandFingerprints`).
+   Passive but a **guess** — a command name is not proof, and `/tab` or `/npc`
+   could be anything.
+
+Tier 3 lives in its own bucket (`guessedPlugins()`), gets its own `guess:N`
+counter in the summary, and renders greyed out with a trailing `?` and a hover
+that says GUESS. **Never merge it into the confirmed buckets.** The per-source
+breakdown is the user's only handle on how much to trust the total, and a mod
+that inflates its plugin count with guesses is worse than one that finds fewer.
+
+## The probes are the only thing we send
+
+The mod is passive except for tab-completion probes: one
+`ServerboundCommandSuggestionPacket` per plugin-listing alias the server actually
+advertised (`/version`, `/plugins`, `/pl`, `/about`, the `bukkit:` and `paper:`
+forms), capped at `MAX_PROBES`, fired **only** when the user runs the command,
+with a shared 100-tick timeout.
+
+Two rules that are easy to break when touching this:
+
+- **Only probe aliases present in the command tree.** Never send speculative
+  probes for commands the server never advertised — that is unbounded packets for
+  guaranteed-empty replies.
+- **The scan completes when every probe has answered**, not on the first reply. A
+  fast empty `/pl` response must not cut off the slower `/version` reply that
+  carries the actual list.
 
 That restraint is a design rule, not a fear of detection — the developer's
 position is that server-side plugins can't meaningfully fingerprint a client
@@ -144,9 +170,9 @@ users that we're honest about it.
   removed, and the gametest asserts it stays gone.
 - **Mod detection is a lower bound**, not a mod list — a server-side mod with no
   networking declares no channels and is invisible. The hover text says so.
-- **Plugin detection is a guess** from namespaced commands plus tab completion.
-  The count line separates `cmd:` and `tab:` sources on purpose — that's the user's
-  only signal about how much to trust it.
+- **Plugin detection is a guess.** The count line separates `cmd:`, `tab:` and
+  `guess:` sources on purpose — that's the user's only signal about how much to
+  trust it. See the three-tier section above.
 - When a value can't be determined, print `unknown` / `N/A` in dark gray. Never
   invent a fallback that reads like a real reading, and never let a failed lookup
   throw out of the command — the existing `try`/`catch` around biome lookup and
