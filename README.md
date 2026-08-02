@@ -30,7 +30,7 @@
 ## Compatibility
 - **Loader**: Fabric
 - **Environment**: Client
-- **Minecraft**: 26.1.2
+- **Minecraft**: 26.2
 - **Java**: 25+
 
 ## Preview
@@ -42,4 +42,3 @@ If you find a server where output looks wrong, please include:
 - Fabric Loader version
 - Fabric API version
 - The exact chat output from `/serverinsight`
- from `/serverinsight`

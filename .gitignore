@@ -19,3 +19,6 @@ Thumbs.db
 
 # Copilot
 .github/copilot-instructions.md
+
+# Claude Code — CLAUDE.md and .claude/skills/ are shared, local settings are not
+.claude/settings.local.json

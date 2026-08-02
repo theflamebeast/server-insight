@@ -14,19 +14,29 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "25"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
       - name: Build
         run: ./gradlew build
+
+      # Keeps the remapped mod jar downloadable from the run summary, so a build
+      # can be tested in-game without a local Gradle setup. Loom also emits
+      # -sources and -dev jars into the same dir; only the release jar is useful here.
+      - name: Upload mod jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: serverinsight-jar
+          path: build/libs/*.jar
+          if-no-files-found: error
