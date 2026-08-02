@@ -24,6 +24,13 @@ public final class TimingTracker {
 		}
 	}
 
+	// Number of time-update packets currently in the window. getEstimatedTps() reports
+	// a flat 20.0 whether the estimate is well-supported or starved, so this is the only
+	// way to tell that the mixin feeding this tracker is actually firing.
+	public int sampleCount() {
+		return recentUpdatesMillis.size();
+	}
+
 	public double getEstimatedTps() {
 		// Early after join, assume 20 to avoid noisy values.
 		if (joinMillis > 0 && System.currentTimeMillis() - joinMillis < 4000) {

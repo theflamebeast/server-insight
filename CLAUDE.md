@@ -20,13 +20,17 @@ bad idea, say so in a sentence and move on — don't cushion it.
 ## Build & verify
 
 ```bash
-./gradlew build          # compile + remap + jar. This is THE gate.
-./gradlew runClient      # real dev client — the only way to prove mixins apply
-./gradlew genSources     # decompile MC when you need to read vanilla code
+./gradlew build              # compile + remap + jar
+./gradlew runClientGameTest  # boots a real client + dedicated server, ~2 min. THE gate.
+./gradlew runClient          # interactive dev client, for looking at things yourself
+./gradlew genSources         # decompile MC when you need to read vanilla code
 ```
 
-There are no tests. `build` is the whole automated safety net, so treat a red
-build as a hard stop.
+`runClientGameTest` launches an actual Minecraft window and a real dedicated
+server, plays through a join, runs the command and asserts on the result. It is
+slow and it is the only check that can fail for the reason this mod actually
+breaks — run it before calling any change to detection, formatting, or the
+Minecraft version done. CI runs it headless under Xvfb on every push.
 
 - **Use `./gradlew`, never a bare `javac`/`java`.** `java` on PATH here is 24;
   `JAVA_HOME` points at Adoptium **25**, which is what the build needs. The
@@ -45,6 +49,12 @@ matched by **method name at runtime**, not at compile time. If Mojang renames
 injection failure. The three targets in
 `src/main/java/dev/flamebeast/serverinsight/mixin/ClientPlayNetworkHandlerMixin.java`
 are the whole risk surface.
+
+`./gradlew runClientGameTest` is the real answer: the mixin config sets
+`defaultRequire: 1`, so a missing target throws while `ClientPacketListener`
+loads, and the test crashes on connect before any assertion runs. The test also
+asserts each inject actually *fired*, which catches the subtler case where the
+method still exists but is no longer called on the path we assumed.
 
 Cheap check without launching the game — javap the remapped jar Loom cached:
 
@@ -188,22 +198,22 @@ Current targets live in `gradle.properties`, `build.gradle` (Loom),
 
   ```
   ✅ Build — ./gradlew build, BUILD SUCCESSFUL
-  ✅ Mixins — 3/3 targets present in 26.2 remapped jar
-  ❌ In-game — not launched, needs a real server
+  ✅ Gametest — ./gradlew runClientGameTest, BUILD SUCCESSFUL
   ✅ Committed — 8db830b
   ✅ Pushed — origin/main
   ❌ CI — still running, not yet green
   ```
 
   Rules for it:
-  - **Standard gates, in this order:** Build, Mixins, In-game, Committed, Pushed,
-    CI. Add a gate when the work has one; DROP a gate that genuinely doesn't
-    apply rather than marking it ❌ — ❌ means "should have happened and didn't",
-    not "not applicable". A README-only change has no Mixins line.
+  - **Standard gates, in this order:** Build, Gametest, Committed, Pushed, CI.
+    Add a gate when the work has one; DROP a gate that genuinely doesn't apply
+    rather than marking it ❌ — ❌ means "should have happened and didn't", not
+    "not applicable". A README-only change has no Gametest line.
   - **Every line carries its evidence** — the commit sha, the literal tool
     output, the branch. `✅ Build` alone is useless.
-  - **❌ is a feature, not a failure to hide.** In-game verification usually can't
-    happen from here; mark it ❌ and say so rather than implying it passed.
+  - **❌ is a feature, not a failure to hide.** If you skipped the gametest
+    because it takes two minutes, say that on the line rather than implying it
+    passed.
   - **CI means actually checking it** (`gh run list --limit 3`), not assuming
     green because it built locally.
   - Skip the block entirely for pure conversation — it belongs to WORK.

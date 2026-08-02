@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "serverinsight-gametest",
+  "version": "1.0.0",
+  "name": "Server Insight Game Tests",
+  "description": "Client gametests for Server Insight. Never published — src/gametest is not part of the released jar.",
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.flamebeast.serverinsight.gametest.FakePluginCommands"
+    ],
+    "fabric-client-gametest": [
+      "dev.flamebeast.serverinsight.gametest.ServerInsightGameTest"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
+    "minecraft": ">=26.2",
+    "java": ">=25"
+  }
+}

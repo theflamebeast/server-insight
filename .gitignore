@@ -13,6 +13,9 @@ out/
 # Build output
 bin/
 
+# Dev client/server run directories (runClient, runClientGameTest)
+run/
+
 # OS
 Thumbs.db
 .DS_Store

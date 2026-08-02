@@ -40,3 +40,48 @@ jobs:
           name: serverinsight-jar
           path: build/libs/*.jar
           if-no-files-found: error
+
+  # Separate job because it boots a real Minecraft client and a dedicated server,
+  # which takes minutes and needs a display — no reason to make the jar build wait
+  # on it. This is the only check that can catch a mixin whose target Mojang renamed,
+  # since that failure is invisible to the compiler.
+  client-gametest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Minecraft needs a window and an OpenGL 3.2 context. Xvfb supplies the window;
+      # Mesa's llvmpipe supplies the context in software, since runners have no GPU.
+      - name: Install virtual display and software OpenGL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libglx-mesa0
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run client gametest
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a --server-args="-screen 0 1280x720x24" ./gradlew runClientGameTest
+
+      # Uploaded on failure too — when this job breaks, the screenshot of the chat
+      # output is usually the fastest way to see what the mod actually printed.
+      - name: Upload gametest screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gametest-screenshots
+          path: build/run/clientGameTest/screenshots/
+          if-no-files-found: ignore

@@ -17,6 +17,21 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }
 
+// Client gametests live in src/gametest and ship as their own tiny mod, so the fake
+// server-side commands they need never end up in the released jar. `eula = true`
+// accepts the Minecraft EULA for the throwaway dedicated server the test boots.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = 'serverinsight-gametest'
+		enableClientGameTests = true
+		// There are no server-side gametests, and leaving this on makes `build` boot a
+		// gametest server to run nothing. Flip it back on if src/gametest ever gains one.
+		enableGameTests = false
+		eula = true
+	}
+}
+
 processResources {
 	inputs.property 'version', project.version
 	filesMatching('fabric.mod.json') {

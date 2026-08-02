@@ -88,9 +88,20 @@ it.options.compilerArgs.addAll(['-Xlint:deprecation', '-Xlint:unchecked'])
 Zero warnings from `dev/flamebeast/**` means the source is genuinely current.
 Ignore anything Loom or Gradle emits about itself.
 
-**Then `./gradlew runClient`** if the mixin check turned up anything, or if the
-port changed source. It is the only real proof, and the only way to see the
-command's output.
+**Then `./gradlew runClientGameTest`** — always, on a version bump, whatever the
+javap check said. It boots a real client against a real dedicated server and
+asserts all three injects actually fired, so it catches both a renamed target and
+a target that survived but is no longer called on the path we assumed. Takes about
+two minutes. Open the screenshot it drops in
+`build/run/clientGameTest/screenshots/` afterwards to confirm the chat output
+still renders sanely — component styling churns every release.
+
+If the *gametest* breaks rather than the mod, suspect `src/gametest`'s fake
+`/version` first. Minecraft ships an op-only `/version`; our literal merges into
+it and inherits the op requirement, which silently removes the whole node from a
+normal player's command tree and makes the scan no-op. The test ops the player
+specifically to work around that, and that workaround is what breaks if Mojang
+touches the command.
 
 ## 4. What actually breaks
 
