@@ -1,6 +1,8 @@
 package dev.flamebeast.serverinsight.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import dev.flamebeast.serverinsight.detect.ServerMods;
+import dev.flamebeast.serverinsight.detect.ServerSoftware;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import dev.flamebeast.serverinsight.text.ChatFormat;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
@@ -24,13 +26,12 @@ import net.minecraft.server.permissions.Permissions;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.GameType;
 
-import java.net.InetAddress;
 import java.net.URI;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -71,7 +72,7 @@ public final class ServerInsightCommand {
 			printPlayerDetails(source, mc, null);
 			printWorldDetails(source, mc);
 			printTps(source);
-			printPlugins(source, mc).whenComplete((ignored, throwable) -> printSupport(source));
+			printPlugins(source, mc, null).whenComplete((ignored, throwable) -> printSupport(source));
 			return 1;
 		}
 
@@ -85,7 +86,8 @@ public final class ServerInsightCommand {
 		printPlayerDetails(source, mc, network);
 		printWorldDetails(source, mc);
 		printTps(source);
-		printPlugins(source, mc).whenComplete((ignored, throwable) -> printSupport(source));
+		printMods(source);
+		printPlugins(source, mc, network.serverBrand()).whenComplete((ignored, throwable) -> printSupport(source));
 		return 1;
 	}
 
@@ -106,27 +108,103 @@ public final class ServerInsightCommand {
 	}
 
 	private static void printTps(FabricClientCommandSource source) {
-		double tps = ServerInsightRuntime.INSTANCE.timing().getEstimatedTps();
+		OptionalDouble estimate = ServerInsightRuntime.INSTANCE.timing().estimatedTps();
+
+		// No data is its own answer. Substituting a plausible 20.00 here — which this
+		// used to do — is the one thing the mod must not do, since the whole point of
+		// the reading is that the user can't otherwise tell.
+		if (estimate.isEmpty()) {
+			Component unknown = Component.literal("unknown").withStyle(ChatFormatting.GRAY)
+				.append(Component.literal(" (server sends no time updates)").withStyle(ChatFormatting.DARK_GRAY));
+			send(source, ChatFormat.kv("Perf", unknown));
+			return;
+		}
+
+		double tps = estimate.getAsDouble();
 		ChatFormatting color = tps >= 19.5 ? ChatFormatting.GREEN : tps >= 17.5 ? ChatFormatting.YELLOW : tps >= 14.0 ? ChatFormatting.GOLD : ChatFormatting.RED;
-		double mspt = tps <= 0.0 ? 0.0 : (1000.0 / tps);
+
+		// ms/t used to sit here as 1000/tps, which is just the TPS restated and reads
+		// like a second, independent measurement. Real ms/t is how long the server
+		// spends processing a tick, which a client cannot see.
 		Component value = Component.literal(String.format("%.2f", tps)).withStyle(color)
 			.append(Component.literal(" TPS").withStyle(ChatFormatting.GRAY))
-			.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY))
-			.append(Component.literal(String.format("%.1f", mspt)).withStyle(ChatFormatting.GRAY))
-			.append(Component.literal(" ms/t").withStyle(ChatFormatting.DARK_GRAY))
 			.append(Component.literal(" (est)").withStyle(ChatFormatting.DARK_GRAY));
 		send(source, ChatFormat.kv("Perf", value));
 	}
 
-	private static CompletableFuture<Void> printPlugins(FabricClientCommandSource source, Minecraft mc) {
+	private static void printSoftware(FabricClientCommandSource source, String brand) {
+		ServerSoftware software = ServerSoftware.parse(brand);
+
+		MutableComponent value = Component.literal(software.displayName())
+			.setStyle(Style.EMPTY
+				.withColor(TextColor.fromRgb(YELLOW_RGB))
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Raw brand: " + (brand == null ? "unknown" : brand))
+					.withStyle(ChatFormatting.GRAY)))
+			);
+
+		if (software.family().hint() != null) {
+			value.append(Component.literal("  (" + software.family().hint() + ")").withStyle(ChatFormatting.DARK_GRAY));
+		}
+
+		if (software.proxy() != null && software.family() != ServerSoftware.Family.PROXY) {
+			value.append(Component.literal("  via ").withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(software.proxy()).withStyle(ChatFormatting.GRAY));
+		}
+
+		send(source, ChatFormat.kv("Software", value));
+	}
+
+	/**
+	 * Server-side mods, read from the channels the server declared it can receive.
+	 * Only printed when something is there — on a plain Bukkit or vanilla server the
+	 * line would always be empty and just add noise.
+	 */
+	private static void printMods(FabricClientCommandSource source) {
+		Set<String> mods = ServerMods.detected();
+		if (mods.isEmpty()) {
+			return;
+		}
+
+		MutableComponent summary = ChatFormat.kv("Mods", Component.literal(String.valueOf(mods.size()))
+			.withStyle(ChatFormatting.YELLOW)
+			.append(Component.literal(" declared").withStyle(ChatFormatting.GRAY)));
+
+		summary.append(Component.literal("  [copy]")
+			.setStyle(Style.EMPTY
+				.withColor(TextColor.fromRgb(AQUA_RGB))
+				.withClickEvent(new ClickEvent.CopyToClipboard(String.join(", ", mods)))
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Copy mod list").withStyle(ChatFormatting.WHITE)))
+			));
+		send(source, summary);
+
+		MutableComponent line = ChatFormat.prefix().append(Component.literal("• ").withStyle(ChatFormatting.DARK_GRAY));
+		int i = 0;
+		for (String mod : mods) {
+			line.append(Component.literal(mod)
+				.setStyle(Style.EMPTY
+					.withColor(TextColor.fromRgb(YELLOW_RGB))
+					.withClickEvent(new ClickEvent.CopyToClipboard(mod))
+					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to copy").withStyle(ChatFormatting.WHITE)
+						.append(Component.literal("\nFrom declared network channels — mods without networking are invisible")
+							.withStyle(ChatFormatting.DARK_GRAY))))
+				));
+			if (++i < mods.size()) {
+				line.append(Component.literal(", ").withStyle(ChatFormatting.DARK_GRAY));
+			}
+		}
+		send(source, line);
+	}
+
+	private static CompletableFuture<Void> printPlugins(FabricClientCommandSource source, Minecraft mc, String brand) {
 		if (mc.getConnection() == null) {
 			send(source, ChatFormat.kv("Plugins", Component.literal("N/A (not connected)").withStyle(ChatFormatting.DARK_GRAY)));
 			return CompletableFuture.completedFuture(null);
 		}
 
 		Consumer<Component> out = msg -> send(source, msg);
+		ServerSoftware.Family family = ServerSoftware.parse(brand).family();
 
-		printPluginsLine(out, false);
+		printPluginsLine(out, false, family);
 
 		CompletableFuture<List<String>> scanFuture = ServerInsightRuntime.INSTANCE.plugins().requestCompletionScan();
 		CompletableFuture<Void> done = new CompletableFuture<>();
@@ -140,21 +218,21 @@ public final class ServerInsightCommand {
 				out.accept(ChatFormat.prefix().append(Component.literal("Plugin scan failed: ").withStyle(ChatFormatting.RED))
 					.append(Component.literal(throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage()).withStyle(ChatFormatting.DARK_RED)));
 			}
-			printPluginsLine(out, true);
+			printPluginsLine(out, true, family);
 			done.complete(null);
 		}));
 
 		return done;
 	}
 
-	private static void printPluginsLine(Consumer<Component> out, boolean includeList) {
+	private static void printPluginsLine(Consumer<Component> out, boolean includeList, ServerSoftware.Family family) {
 		Set<String> plugins = ServerInsightRuntime.INSTANCE.plugins().combinedPlugins();
 		int fromTree = ServerInsightRuntime.INSTANCE.plugins().commandTreeCount();
 		int fromTab = ServerInsightRuntime.INSTANCE.plugins().completionCount();
 
 		Component summary = plugins.isEmpty()
 			? Component.literal("None detected").withStyle(ChatFormatting.YELLOW)
-				.append(Component.literal(" (server may hide this)").withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(" (" + emptyPluginsReason(family) + ")").withStyle(ChatFormatting.DARK_GRAY))
 			: Component.literal(String.valueOf(plugins.size())).withStyle(ChatFormatting.YELLOW)
 				.append(Component.literal(" detected").withStyle(ChatFormatting.GRAY))
 				.append(Component.literal("  cmd:").withStyle(ChatFormatting.DARK_GRAY))
@@ -191,6 +269,20 @@ public final class ServerInsightCommand {
 		out.accept(line);
 	}
 
+	/**
+	 * "None detected" means something different depending on what the server runs. On
+	 * vanilla or a modded server it is the correct and complete answer; only on a
+	 * Bukkit-family server does it actually suggest the server is withholding.
+	 */
+	private static String emptyPluginsReason(ServerSoftware.Family family) {
+		return switch (family) {
+			case VANILLA -> "vanilla server has no plugin system";
+			case MODDED -> "modded server, mods are listed above";
+			case BUKKIT -> "server may hide this";
+			default -> "server may hide this";
+		};
+	}
+
 	private static void printSingleplayer(FabricClientCommandSource source, Minecraft mc) {
 		IntegratedServer server = mc.getSingleplayerServer();
 		send(source, ChatFormat.kv("Type", Component.literal("Singleplayer").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(AQUA_RGB)))));
@@ -210,7 +302,7 @@ public final class ServerInsightCommand {
 			displayAddress = serverInfo.ip;
 			ServerAddress parsed = ServerAddress.parseString(displayAddress);
 			port = parsed.getPort();
-			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolve(parsed.getHost()), port)));
+			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolvedIp(parsed.getHost()), port)));
 			Component motd = Objects.requireNonNullElse(serverInfo.motd, Component.literal("N/A").withStyle(ChatFormatting.DARK_GRAY));
 			send(source, ChatFormat.kv("MOTD", motd.copy().withStyle(ChatFormatting.GRAY)));
 			send(source, ChatFormat.kv("Version", serverInfo.version.copy().withStyle(ChatFormatting.YELLOW)));
@@ -219,13 +311,10 @@ public final class ServerInsightCommand {
 			ServerAddress parsed = ServerAddress.parseString(network.getConnection().getRemoteAddress().toString());
 			displayAddress = parsed.getHost() + ":" + parsed.getPort();
 			port = parsed.getPort();
-			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolve(parsed.getHost()), port)));
+			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolvedIp(parsed.getHost()), port)));
 		}
 
-		String brand = network.serverBrand();
-		Component brandText = Component.literal(brand == null ? "unknown" : brand)
-			.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(YELLOW_RGB)));
-		send(source, ChatFormat.kv("Brand", brandText));
+		printSoftware(source, network.serverBrand());
 
 		int online = safeOnlineCount(network);
 		if (online >= 0) {
@@ -347,18 +436,17 @@ public final class ServerInsightCommand {
 			.append(Component.literal(")").withStyle(ChatFormatting.DARK_GRAY));
 	}
 
-	private static String resolve(String host) {
-		if (host == null) {
-			return null;
-		}
-		if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "0.0.0.0".equals(host)) {
+	/**
+	 * Whatever the join-time lookup produced. Null while it is still in flight or if it
+	 * failed, in which case the address line just omits the resolved IP — never block
+	 * the client thread here waiting for DNS.
+	 */
+	private static String resolvedIp(String host) {
+		if (host == null || "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "0.0.0.0".equals(host)) {
 			return host;
 		}
-		try {
-			return InetAddress.getByName(host).getHostAddress();
-		} catch (UnknownHostException | SecurityException e) {
-			return host;
-		}
+
+		return ServerInsightRuntime.INSTANCE.address().resolvedFor(host);
 	}
 
 	private static Component difficultyText(Minecraft mc) {

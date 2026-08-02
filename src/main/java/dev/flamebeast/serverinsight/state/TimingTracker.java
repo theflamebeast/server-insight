@@ -1,61 +1,84 @@
 package dev.flamebeast.serverinsight.state;
 
 import java.util.ArrayDeque;
+import java.util.OptionalDouble;
 
+/**
+ * Estimates the server's tick rate from the time-update packets it sends.
+ *
+ * The packet carries the server's gameTime — a raw tick counter — so the estimate is
+ * simply ticks elapsed over wall-clock elapsed, and it does not care how often the
+ * server chooses to send. An earlier version discarded gameTime and assumed a fixed
+ * 20 ticks per packet, which silently produced wrong numbers on any server that sends
+ * at a different interval, and reported a confident 20.00 on servers that never send
+ * at all.
+ *
+ * Fed from the client thread only (the mixin injects at TAIL, after the packet has
+ * been handed off the netty thread).
+ */
 public final class TimingTracker {
-	// Stores the arrival timestamps of recent server time updates.
-	private final ArrayDeque<Long> recentUpdatesMillis = new ArrayDeque<>();
+	private record Sample(long gameTime, long wallMillis) {
+	}
+
 	private static final int WINDOW = 20;
-	private long joinMillis = -1;
+
+	/** Below this the wall-clock divisor is too small for the ratio to be stable. */
+	private static final long MIN_SPAN_MILLIS = 1_500L;
+
+	/** A server that stops sending must not leave its last good reading on screen. */
+	private static final long STALE_MILLIS = 10_000L;
+
+	private final ArrayDeque<Sample> samples = new ArrayDeque<>();
 
 	public void reset() {
-		recentUpdatesMillis.clear();
-		joinMillis = System.currentTimeMillis();
+		samples.clear();
 	}
 
-	public void onWorldTimeUpdateMillis(long nowMillis) {
-		if (joinMillis < 0) {
-			joinMillis = nowMillis;
-		}
+	public void onWorldTimeUpdate(long gameTime, long nowMillis) {
+		samples.addLast(new Sample(gameTime, nowMillis));
 
-		recentUpdatesMillis.addLast(nowMillis);
-		while (recentUpdatesMillis.size() > WINDOW) {
-			recentUpdatesMillis.removeFirst();
+		while (samples.size() > WINDOW) {
+			samples.removeFirst();
 		}
 	}
 
-	// Number of time-update packets currently in the window. getEstimatedTps() reports
-	// a flat 20.0 whether the estimate is well-supported or starved, so this is the only
-	// way to tell that the mixin feeding this tracker is actually firing.
+	/**
+	 * Number of packets in the window. getEstimatedTps() cannot distinguish "healthy"
+	 * from "no data" on its own, so this is what proves the mixin feeding it is firing.
+	 */
 	public int sampleCount() {
-		return recentUpdatesMillis.size();
+		return samples.size();
 	}
 
-	public double getEstimatedTps() {
-		// Early after join, assume 20 to avoid noisy values.
-		if (joinMillis > 0 && System.currentTimeMillis() - joinMillis < 4000) {
-			return 20.0;
+	/**
+	 * Empty whenever there is not enough recent data to say something honest — too few
+	 * samples, too short a span, or the server went quiet. Callers must render that as
+	 * "unknown" rather than substituting a plausible number.
+	 */
+	public OptionalDouble estimatedTps() {
+		Sample first = samples.peekFirst();
+		Sample last = samples.peekLast();
+
+		if (first == null || last == null || samples.size() < 2) {
+			return OptionalDouble.empty();
 		}
 
-		if (recentUpdatesMillis.size() < 2) {
-			return 20.0;
+		long spanMillis = last.wallMillis() - first.wallMillis();
+		if (spanMillis < MIN_SPAN_MILLIS) {
+			return OptionalDouble.empty();
 		}
 
-		Long first = recentUpdatesMillis.peekFirst();
-		Long last = recentUpdatesMillis.peekLast();
-		if (first == null || last == null || last <= first) {
-			return 20.0;
+		if (System.currentTimeMillis() - last.wallMillis() > STALE_MILLIS) {
+			return OptionalDouble.empty();
 		}
 
-		int intervals = recentUpdatesMillis.size() - 1;
-		double elapsedSeconds = (last - first) / 1000.0;
-		if (elapsedSeconds <= 0.0) {
-			return 20.0;
+		// gameTime can jump backwards if the server rewinds it. Refuse rather than guess.
+		long ticks = last.gameTime() - first.gameTime();
+		if (ticks < 0) {
+			return OptionalDouble.empty();
 		}
 
-		// World time updates typically represent ~20 ticks worth of time.
-		double ticks = intervals * 20.0;
-		double tps = ticks / elapsedSeconds;
-		return Math.max(0.0, Math.min(20.0, tps));
+		double tps = ticks * 1000.0 / spanMillis;
+		return OptionalDouble.of(Math.max(0.0, Math.min(20.0, tps)));
 	}
 }

@@ -1,6 +1,7 @@
 package dev.flamebeast.serverinsight.gametest;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.flamebeast.serverinsight.detect.ServerMods;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -52,6 +53,7 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			assertCommandRegistered(context);
 			assertCommandTreeMixinFired(context);
 			assertTimeMixinFired(context);
+			assertServerModsDetected(context);
 			assertCommandRunsAndCompletesScan(context);
 
 			// Not compared against a reference — it is uploaded as a CI artifact so the
@@ -94,15 +96,32 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 	 * inject ran.
 	 */
 	private static void assertTimeMixinFired(ClientGameTestContext context) {
-		context.waitFor(mc -> ServerInsightRuntime.INSTANCE.timing().sampleCount() >= 2, SLOW_TIMEOUT);
+		// An empty estimate is the honest answer when starved, so waiting for a value to
+		// appear is what proves packets are actually arriving and being counted.
+		context.waitFor(mc -> ServerInsightRuntime.INSTANCE.timing().estimatedTps().isPresent(), SLOW_TIMEOUT);
 
-		double tps = context.computeOnClient(mc -> ServerInsightRuntime.INSTANCE.timing().getEstimatedTps());
+		double tps = context.computeOnClient(mc ->
+			ServerInsightRuntime.INSTANCE.timing().estimatedTps().orElse(-1.0));
 
 		// Only the clamp is asserted. The estimate is derived from wall-clock packet
 		// spacing, and a CI runner's timing is not stable enough to assert "about 20"
 		// without buying a flaky test.
 		if (!(tps > 0.0) || tps > 20.0) {
 			throw new AssertionError("TPS estimate outside its 0-20 clamp: " + tps);
+		}
+
+	}
+
+	/**
+	 * Server-side mods, read from declared network channels. Deterministic here because
+	 * the test server runs Fabric API, which always registers channels — so "fabric-api"
+	 * is guaranteed to be present and its absence means the detection broke.
+	 */
+	private static void assertServerModsDetected(ClientGameTestContext context) {
+		Set<String> mods = context.computeOnClient(mc -> ServerMods.detected());
+
+		if (!mods.contains("fabric-api")) {
+			throw new AssertionError("expected fabric-api among declared server mods, found: " + mods);
 		}
 	}
 
@@ -150,8 +169,13 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 		// Every line carries the branded prefix — that is the whole point of ChatFormat.
 		String[][] required = {
 			{"Address"},
-			{"Brand"},
-			{"Perf", "TPS", "ms/t"},
+			// Brand is parsed, not echoed: the test server is Fabric, which is modded
+			// and therefore cannot have plugins — and the plugins line must say so.
+			{"Software", "Fabric"},
+			{"modded, no plugins"},
+			{"Perf", "TPS"},
+			{"Mods", "declared"},
+			{"fabric-api"},
 			{"Plugins", "detected"},
 			{"Pos"},
 			{"Dim"},
@@ -171,6 +195,13 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 		// promises users it says so — a refactor that drops these is a real regression.
 		if (!CapturedChat.hasLineContaining("(est)")) {
 			throw new AssertionError("the TPS line lost its \"(est)\" qualifier\nactual output:\n  "
+				+ String.join("\n  ", lines));
+		}
+
+		// ms/t was removed because it was computed as 1000/tps — the TPS reading
+		// restated, dressed up as an independent measurement. It must not come back.
+		if (CapturedChat.hasLineContaining("ms/t")) {
+			throw new AssertionError("ms/t is back; a client cannot measure it\nactual output:\n  "
 				+ String.join("\n  ", lines));
 		}
 	}

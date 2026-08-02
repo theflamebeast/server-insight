@@ -6,7 +6,12 @@
 - `/serverinsight` — Sends all details of the server in an organized structure
 
 ## Features
-- **Server details**: address, MOTD, version, brand (when available)
+- **Server details**: address, MOTD, version, protocol, player count, difficulty, your permission level
+- **Server software**: identifies Paper / Purpur / Folia / Spigot / Fabric / Forge / vanilla from the
+  brand, with version, and tells you whether the server can run plugins at all. Detects when you're
+  connected through BungeeCord, Waterfall or Velocity.
+- **Server-side mods**: lists mods the server declares network channels for — something no other
+  client-side mod surfaces
 - **Plugins**:
   - Reads namespaces from the command tree
   - Checks Tab-completion
@@ -14,11 +19,13 @@
   - Color codes popular plugins and security/anticheat plugins
 - **Player details**: gamemode, ping, coordinates
 - **World details**: dimension, biome, time, weather
-- **Performance estimate**: TPS + ms/t (derived from server time update packets)
+- **Performance estimate**: TPS, measured from the server's own tick counter
 
 ## Note
-- **TPS and ms/t are estimates**, based on timing packets the server sends.
+- **TPS is an estimate**, measured from the tick counter in the time packets the server sends. If a
+  server doesn't send them, the mod says **unknown** rather than inventing a number.
 - **Plugin detection is not guaranteed** — many servers intentionally hide or restrict this information.
+- **Mod detection is a lower bound.** A server-side mod that never talks to clients is invisible to it.
 - This mod is **client-side** and does not need to be installed on the server.
 
 ## Installation

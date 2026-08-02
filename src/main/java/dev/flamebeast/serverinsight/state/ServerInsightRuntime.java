@@ -8,6 +8,7 @@ public enum ServerInsightRuntime {
 
 	private final TimingTracker timingTracker = new TimingTracker();
 	private final PluginScanner pluginScanner = new PluginScanner();
+	private final AddressResolver addressResolver = new AddressResolver();
 
 	public TimingTracker timing() {
 		return timingTracker;
@@ -17,22 +18,28 @@ public enum ServerInsightRuntime {
 		return pluginScanner;
 	}
 
+	public AddressResolver address() {
+		return addressResolver;
+	}
+
 	public void resetForJoin() {
 		timingTracker.reset();
 		pluginScanner.reset();
+		addressResolver.reset();
 	}
 
 	public void resetForDisconnect() {
 		timingTracker.reset();
 		pluginScanner.reset();
+		addressResolver.reset();
 	}
 
 	public void tick() {
 		pluginScanner.tick();
 	}
 
-	public void onWorldTimeUpdateMillis(long nowMillis) {
-		timingTracker.onWorldTimeUpdateMillis(nowMillis);
+	public void onWorldTimeUpdate(long gameTime, long nowMillis) {
+		timingTracker.onWorldTimeUpdate(gameTime, nowMillis);
 	}
 
 	public void onCommandTree(CommandDispatcher<?> dispatcher) {

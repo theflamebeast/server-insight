@@ -69,14 +69,25 @@ mixin will apply. `runClient` is the real proof; the javap check is the fast one
 ## Architecture
 
 ```
-ServerInsightClient          entrypoint: registers command, join/disconnect resets, tick hook
+ServerInsightClient          entrypoint: command, join/disconnect resets, tick hook, DNS kickoff
 command/ServerInsightCommand /serverinsight — reads state, formats, prints. All output lives here.
 state/ServerInsightRuntime   enum singleton; owns all mutable state
-state/TimingTracker          TPS estimate from ClientboundSetTimePacket arrival intervals
+state/TimingTracker          TPS from the gameTime counter in ClientboundSetTimePacket
 state/PluginScanner          plugin detection (command tree + one tab-completion probe)
+state/AddressResolver        async DNS, started on join so the command never blocks
+detect/ServerSoftware        pure: brand string -> Paper/Fabric/vanilla/proxy + family
+detect/ServerMods            pure: server-declared channels -> server-side mod ids
 text/ChatFormat              branded prefix, gradient header, key/value lines
 mixin/…NetworkHandlerMixin   the only mixin: 3 injects on ClientPacketListener
 ```
+
+**Nothing in `detect/` holds state** — both are pure functions over data the
+client already has, called fresh at command time. Keep them that way; if
+something needs to accumulate across packets, it belongs in `state/`.
+
+**Never block the client thread in the command.** DNS was doing it. Anything
+that can take unbounded time starts on join and gets read from cache, or runs
+async like the plugin scan.
 
 Data flow is one-directional: **mixin → `ServerInsightRuntime` → command reads it.**
 The mixin never formats and the command never touches packets. Keep it that way.
@@ -99,16 +110,18 @@ The mod is passive except for one packet: a single
 `ServerboundCommandSuggestionPacket` asking for completions on `/version `,
 fired **only** when the user runs the command, with a 100-tick timeout.
 
-That restraint is deliberate and non-negotiable:
+That restraint is a design rule, not a fear of detection — the developer's
+position is that server-side plugins can't meaningfully fingerprint a client
+this way, and that's their call. The reasons it stays:
 
-- **Never add background or periodic probing.** A client that quietly polls the
-  server for plugin lists looks exactly like a hack client, and anticheats treat
-  it that way. Every outbound packet must be a direct consequence of the user
-  typing the command.
-- **Never add anything that isn't already visible to a vanilla client.** No
-  exploiting parser quirks, no permission probing, no brute-forcing command
-  names. The mod surfaces what the server already tells everyone; it does not
-  extract what the server is withholding.
+- **Never add background or periodic probing.** Every outbound packet should be
+  a direct consequence of the user running the command. Background polling costs
+  the user bandwidth and the server work, forever, for a feature nobody is
+  looking at — and it makes the mod's behaviour impossible to reason about.
+- **Prefer passive sources over probes.** Server-side mod detection reads
+  channels the server already announced; the plugin command-tree scan reads a
+  packet that already arrived. Both cost nothing. Reach for a probe only when
+  there is no passive equivalent.
 - One scan at a time — `requestCompletionScan()` rejects a concurrent call rather
   than queueing. Keep that.
 
@@ -117,10 +130,20 @@ That restraint is deliberate and non-negotiable:
 Servers routinely hide, fake, or restrict this data, and the README promises
 users that we're honest about it.
 
-- **TPS is inferred** from time-update packet spacing and is clamped to 0–20;
-  many servers change or suppress that packet, and the first 4 seconds after
-  join always report a flat 20.0 rather than garbage. It is printed with `(est)`
-  and must stay that way.
+- **TPS is inferred** from the server's own `gameTime` counter over wall-clock
+  elapsed, clamped to 0–20, and printed with `(est)`. When there is too little
+  recent data — too few samples, too short a span, or the server went quiet —
+  `estimatedTps()` returns an **empty** `OptionalDouble` and the command prints
+  `unknown`. Never substitute a plausible default: an earlier version returned a
+  flat `20.0` whenever it was starved, so servers that suppress time packets
+  showed a confident perfect score forever. That is the exact failure this
+  section exists to prevent.
+- **Don't derive one reading from another and present it as a second
+  measurement.** `ms/t` used to be `1000/tps`, which is the TPS restated; real
+  ms/t is server-side tick processing time and a client cannot see it. It was
+  removed, and the gametest asserts it stays gone.
+- **Mod detection is a lower bound**, not a mod list — a server-side mod with no
+  networking declares no channels and is invisible. The hover text says so.
 - **Plugin detection is a guess** from namespaced commands plus tab completion.
   The count line separates `cmd:` and `tab:` sources on purpose — that's the user's
   only signal about how much to trust it.

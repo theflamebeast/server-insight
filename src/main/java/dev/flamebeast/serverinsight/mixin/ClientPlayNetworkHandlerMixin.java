@@ -18,9 +18,16 @@ public abstract class ClientPlayNetworkHandlerMixin {
 	@Shadow
 	private CommandDispatcher<ClientSuggestionProvider> commands;
 
-	@Inject(method = "handleSetTime", at = @At("HEAD"))
+	/**
+	 * TAIL, not HEAD. handleSetTime starts with PacketUtils.ensureRunningOnSameThread,
+	 * which throws to defer the packet when it arrives on the netty thread and lets it
+	 * run again on the client thread. A HEAD inject therefore fired twice per packet
+	 * AND mutated the tracker off-thread; TAIL is only reached on the client-thread
+	 * pass, because the netty pass leaves via that exception.
+	 */
+	@Inject(method = "handleSetTime", at = @At("TAIL"))
 	private void serverinsight_onWorldTimeUpdate(ClientboundSetTimePacket packet, CallbackInfo ci) {
-		ServerInsightRuntime.INSTANCE.onWorldTimeUpdateMillis(System.currentTimeMillis());
+		ServerInsightRuntime.INSTANCE.onWorldTimeUpdate(packet.gameTime(), System.currentTimeMillis());
 	}
 
 	@Inject(method = "handleCommands", at = @At("TAIL"))
