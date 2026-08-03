@@ -15,7 +15,7 @@
 - **Plugins**, detected three ways and labelled by confidence:
   - Reads namespaces from the command tree
   - Tab-completes every plugin-listing command the server advertises (`/version`, `/plugins`, `/pl`, …)
-  - Recognises ~50 well-known commands (`/lp` → LuckPerms, `/co` → CoreProtect) — these are
+  - Recognises ~85 well-known commands (`/lp` → LuckPerms, `/co` → CoreProtect) — these are
     **guesses**, shown greyed out with a `?` and counted separately as `guess:`
   - Includes a **copy button** for the detected list and individual plugins
   - Color codes popular plugins and security/anticheat plugins

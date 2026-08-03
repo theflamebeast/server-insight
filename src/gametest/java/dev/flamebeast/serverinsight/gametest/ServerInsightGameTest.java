@@ -1,6 +1,7 @@
 package dev.flamebeast.serverinsight.gametest;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.flamebeast.serverinsight.detect.CommandFingerprints;
 import dev.flamebeast.serverinsight.detect.ServerMods;
 import dev.flamebeast.serverinsight.state.AddressResolver;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
@@ -56,6 +57,7 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			assertTimeMixinFired(context);
 			assertServerModsDetected(context);
 			assertFingerprintGuess(context);
+			assertNoVanillaCommandFingerprinted(context);
 			assertAddressResolverWorks(context);
 			assertCommandRunsAndCompletesScan(context);
 
@@ -174,6 +176,35 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 		Set<String> all = context.computeOnClient(mc -> ServerInsightRuntime.INSTANCE.plugins().combinedPlugins());
 		if (!all.contains("LuckPerms")) {
 			throw new AssertionError("guessed plugins should still appear in the combined list");
+		}
+	}
+
+	/**
+	 * No fingerprint may collide with a command Minecraft ships.
+	 *
+	 * A single bad entry — /worldborder, /time, /perf — would tag EVERY server with that
+	 * plugin, which is the worst failure this feature has. The test player is opped by
+	 * this point, so the command tree here is the full vanilla set, making it the ideal
+	 * thing to check the table against. The only legitimate hit is the /lp the test
+	 * server registers on purpose.
+	 */
+	private static void assertNoVanillaCommandFingerprinted(ClientGameTestContext context) {
+		List<String> collisions = context.computeOnClient(mc -> mc.getConnection().getCommands().getRoot()
+			.getChildren().stream()
+			.map(node -> node.getName())
+			.filter(name -> !name.equals("lp"))
+			.filter(name -> CommandFingerprints.pluginFor(name) != null)
+			.map(name -> name + " -> " + CommandFingerprints.pluginFor(name))
+			.sorted()
+			.toList());
+
+		if (!collisions.isEmpty()) {
+			throw new AssertionError("fingerprint table matches non-plugin commands, so every server "
+				+ "would report these plugins: " + collisions);
+		}
+
+		if (CommandFingerprints.size() < 50) {
+			throw new AssertionError("fingerprint table looks truncated: " + CommandFingerprints.size() + " entries");
 		}
 	}
 
