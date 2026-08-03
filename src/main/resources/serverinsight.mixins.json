@@ -6,6 +6,7 @@
   "client": [
     "ClientPlayNetworkHandlerMixin",
     "EntryGeometryAccessor",
+    "SelectionListAccessor",
     "ServerEntryFlagMixin"
   ],
   "injectors": {

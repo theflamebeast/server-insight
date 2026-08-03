@@ -1,6 +1,8 @@
 package dev.flamebeast.serverinsight.mixin;
 
+import net.minecraft.client.gui.components.AbstractSelectionList;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
 /**
@@ -29,4 +31,8 @@ public interface EntryGeometryAccessor {
 
 	@Invoker("getWidth")
 	int serverinsight$width();
+
+	/** The list this row belongs to, needed to find the scrollbar the row cannot see. */
+	@Accessor("list")
+	AbstractSelectionList<?> serverinsight$list();
 }

@@ -44,8 +44,11 @@ public abstract class ServerEntryFlagMixin {
 	private static final int TEXTURE_WIDTH = 32;
 	private static final int TEXTURE_HEIGHT = 24;
 
-	/** Gap between the row's right edge and the flag, which sits outside the row. */
-	private static final int GAP_FROM_ROW = 4;
+	/** Vanilla's scrollbar width. */
+	private static final int SCROLLBAR_WIDTH = 6;
+
+	/** Gap between the scrollbar and the flag. */
+	private static final int GAP_FROM_SCROLLBAR = 4;
 
 	// RETURN, not TAIL. Vanilla leaves extractContent early for a server that is still
 	// being pinged, and TAIL only injects at the final return — so rows in that state
@@ -63,10 +66,12 @@ public abstract class ServerEntryFlagMixin {
 			return;
 		}
 
-		// OUTSIDE the row, in the empty space to its right — not tucked inside it next to
-		// the ping bars. Vertically centred on the row it belongs to.
+		// To the right of the SCROLLBAR, clear of the whole list widget. The row's own
+		// right edge is not far enough — rows are narrower than the list, and the
+		// scrollbar sits to the right of both.
 		EntryGeometryAccessor geometry = (EntryGeometryAccessor) this;
-		int x = geometry.serverinsight$x() + geometry.serverinsight$width() + GAP_FROM_ROW;
+		int x = ((SelectionListAccessor) geometry.serverinsight$list()).serverinsight$scrollBarX()
+			+ SCROLLBAR_WIDTH + GAP_FROM_SCROLLBAR;
 		int y = geometry.serverinsight$contentYMiddle() - FLAG_HEIGHT / 2;
 
 		// The source region must be the WHOLE texture, or this crops instead of scaling.
