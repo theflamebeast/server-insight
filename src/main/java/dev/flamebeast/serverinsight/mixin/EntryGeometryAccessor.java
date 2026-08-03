@@ -23,4 +23,10 @@ public interface EntryGeometryAccessor {
 
 	@Invoker("getContentYMiddle")
 	int serverinsight$contentYMiddle();
+
+	@Invoker("getX")
+	int serverinsight$x();
+
+	@Invoker("getWidth")
+	int serverinsight$width();
 }

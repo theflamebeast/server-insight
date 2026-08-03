@@ -44,10 +44,17 @@ public abstract class ServerEntryFlagMixin {
 	private static final int TEXTURE_WIDTH = 32;
 	private static final int TEXTURE_HEIGHT = 24;
 
-	/** Vanilla parks the ping bars in the right margin; sit clear of them. */
-	private static final int PING_ICON_MARGIN = 17;
+	/**
+	 * Width of the ping bars vanilla draws hard against the row's right edge, plus a
+	 * gap. The flag sits immediately left of them: that is as far right as it can go
+	 * without drawing on top of the ping indicator.
+	 */
+	private static final int RIGHT_MARGIN = 18;
 
-	@Inject(method = "extractContent", at = @At("TAIL"))
+	// RETURN, not TAIL. Vanilla leaves extractContent early for a server that is still
+	// being pinged, and TAIL only injects at the final return — so rows in that state
+	// never got a flag, which looked like the lookup had failed for them.
+	@Inject(method = "extractContent", at = @At("RETURN"))
 	private void serverinsight_drawFlag(GuiGraphicsExtractor extractor, int mouseX, int mouseY,
 			boolean hovered, float partialTick, CallbackInfo ci) {
 		if (serverData == null || serverData.ip == null) {
@@ -60,15 +67,22 @@ public abstract class ServerEntryFlagMixin {
 			return;
 		}
 
-		// Right-aligned, inside the ping icon, vertically centred on the entry.
+		// Hard against the right edge of the row, vertically centred.
 		EntryGeometryAccessor geometry = (EntryGeometryAccessor) this;
-		int x = geometry.serverinsight$contentRight() - PING_ICON_MARGIN - FLAG_WIDTH;
+		int x = geometry.serverinsight$x() + geometry.serverinsight$width() - FLAG_WIDTH - RIGHT_MARGIN;
 		int y = geometry.serverinsight$contentYMiddle() - FLAG_HEIGHT / 2;
 
+		// The source region must be the WHOLE texture, or this crops instead of scaling.
+		// Passing the destination size as the region drew the top-left 16x12 of a 32x24
+		// flag, which looked like a corner of the flag rather than a small one.
 		extractor.blit(
 			RenderPipelines.GUI_TEXTURED,
 			Identifier.fromNamespaceAndPath("serverinsight", "textures/gui/flags/" + location.countryCode() + ".png"),
-			x, y, 0.0F, 0.0F, FLAG_WIDTH, FLAG_HEIGHT, TEXTURE_WIDTH, TEXTURE_HEIGHT
+			x, y,
+			0.0F, 0.0F,
+			FLAG_WIDTH, FLAG_HEIGHT,
+			TEXTURE_WIDTH, TEXTURE_HEIGHT,
+			TEXTURE_WIDTH, TEXTURE_HEIGHT
 		);
 
 		if (mouseX >= x && mouseX < x + FLAG_WIDTH && mouseY >= y && mouseY < y + FLAG_HEIGHT) {

@@ -7,6 +7,9 @@ import dev.flamebeast.serverinsight.detect.ServerMods;
 import dev.flamebeast.serverinsight.state.AddressResolver;
 import dev.flamebeast.serverinsight.state.GeoLocator;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.ServerList;
 import net.minecraft.resources.Identifier;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -66,6 +69,8 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			assertFlagMixinApplies();
 			assertFlagTextureExists(context);
 			assertCommandRunsAndCompletesScan(context);
+
+			screenshotServerListFlags(context);
 
 			// Not compared against a reference — it is uploaded as a CI artifact so the
 			// actual chat output can be eyeballed after a Minecraft update. Component
@@ -263,6 +268,47 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 				throw new AssertionError(pub + " should be eligible for lookup");
 			}
 		}
+	}
+
+	/**
+	 * Seeds the server list and screenshots it, so flag placement can actually be looked
+	 * at instead of reasoned about.
+	 *
+	 * Deliberately asserts nothing. The flag only appears if the geolocation lookup
+	 * succeeds, which needs internet and spare quota, and neither is something a build
+	 * should depend on. The value is the artifact: after a Minecraft update, this is the
+	 * picture that shows whether the flag still lands in the right place.
+	 */
+	private static void screenshotServerListFlags(ClientGameTestContext context) {
+		context.runOnClient(mc -> {
+			ServerList list = new ServerList(mc);
+			list.load();
+
+			// Public addresses in different countries, so a correct render is obviously
+			// correct rather than three copies of the same flag.
+			//
+			// The boolean is "hidden", NOT "visible" — passing true files the entry in
+			// the hidden list and the screen shows nothing.
+			list.add(new ServerData("Cloudflare", "1.1.1.1", ServerData.Type.OTHER), false);
+			list.add(new ServerData("Google", "8.8.8.8", ServerData.Type.OTHER), false);
+			list.add(new ServerData("Quad9", "9.9.9.9", ServerData.Type.OTHER), false);
+			list.save();
+		});
+
+		// Toasts stack in the top-right and sit exactly where the flags render at the
+		// default window size, hiding them. A bigger window moves the list clear.
+		context.getInput().resizeWindow(1920, 1080);
+
+		context.setScreen(() -> new JoinMultiplayerScreen(null));
+		context.waitForScreen(JoinMultiplayerScreen.class);
+
+		// Long enough for the lookups to land and the list to repaint with them.
+		context.waitTicks(120);
+
+		context.takeScreenshot("server-list-flags");
+
+		context.setScreen(() -> null);
+		context.waitTicks(5);
 	}
 
 	/**
