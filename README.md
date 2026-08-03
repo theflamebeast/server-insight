@@ -1,3 +1,7 @@
+Client-side Fabric mod that tells you everything your client can work out about the server
+you're on — where it's hosted, what software it runs, which plugins and mods it has, and how
+well it's ticking. One command, no server-side install.
+
 ## Links
 - Modrinth: https://modrinth.com/mod/server-insight
 - Support: https://paypal.me/theflamebeast
@@ -56,7 +60,7 @@
 ## Preview
 ![Preview](https://cdn.modrinth.com/data/cdJrY41V/images/0fc75292051ee8a174f5f826a19a489b81db2de0.png)
 
-## [Support / Suggestions](https://github.com/theflamebeast/serverinsight/issues)
+## [Support / Suggestions](https://github.com/theflamebeast/server-insight/issues)
 If you find a server where output looks wrong, please include:
 - Minecraft version
 - Fabric Loader version
