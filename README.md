@@ -6,7 +6,11 @@
 - `/serverinsight` — Sends all details of the server in an organized structure
 
 ## Features
+- **Country flags in the server list**: each server in the multiplayer list gets its host
+  country's flag on the right-hand side. Hover it for the city, region, ISP, network operator
+  and timezone.
 - **Server details**: address, MOTD, version, protocol, player count, difficulty, your permission level
+- **Location**: `/serverinsight` also reports where the address points, with the same details on hover
 - **Server software**: identifies Paper / Purpur / Folia / Spigot / Fabric / Forge / vanilla from the
   brand, with version, and tells you whether the server can run plugins at all. Detects when you're
   connected through BungeeCord, Waterfall or Velocity.
@@ -30,6 +34,11 @@
   The `cmd:` / `tab:` / `guess:` breakdown tells you where each result came from; anything marked
   `guess:` was inferred from a command name and is not confirmed.
 - **Mod detection is a lower bound.** A server-side mod that never talks to clients is invisible to it.
+- **Flags show where the address points**, not necessarily where the server hardware is. Anything
+  behind a proxy, CDN or anycast network geolocates to the edge node.
+- **Country lookups use a public geolocation API.** Only addresses shown in your server list are
+  looked up, results are cached, and private/LAN addresses are never sent. If you are offline or
+  the lookup fails, flags simply don't appear.
 - This mod is **client-side** and does not need to be installed on the server.
 
 ## Installation

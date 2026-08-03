@@ -4,7 +4,9 @@
   "package": "dev.flamebeast.serverinsight.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "ClientPlayNetworkHandlerMixin"
+    "ClientPlayNetworkHandlerMixin",
+    "EntryGeometryAccessor",
+    "ServerEntryFlagMixin"
   ],
   "injectors": {
     "defaultRequire": 1

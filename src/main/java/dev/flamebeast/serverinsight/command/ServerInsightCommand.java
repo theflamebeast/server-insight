@@ -1,8 +1,10 @@
 package dev.flamebeast.serverinsight.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import dev.flamebeast.serverinsight.detect.LocationInfo;
 import dev.flamebeast.serverinsight.detect.ServerMods;
 import dev.flamebeast.serverinsight.detect.ServerSoftware;
+import dev.flamebeast.serverinsight.state.GeoLocator;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import dev.flamebeast.serverinsight.text.ChatFormat;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
@@ -130,6 +132,57 @@ public final class ServerInsightCommand {
 			.append(Component.literal(" TPS").withStyle(ChatFormatting.GRAY))
 			.append(Component.literal(" (est)").withStyle(ChatFormatting.DARK_GRAY));
 		send(source, ChatFormat.kv("Perf", value));
+	}
+
+	/**
+	 * Where the address points. Uses the same cache the server list fills, so by the
+	 * time anyone is in-game this is almost always already resolved; if it isn't, the
+	 * lookup starts and the line is simply skipped this run rather than blocking.
+	 */
+	private static void printLocation(FabricClientCommandSource source, String host) {
+		LocationInfo location = GeoLocator.lookup(host);
+		if (location == null) {
+			return;
+		}
+
+		MutableComponent value = Component.literal(location.describePlace())
+			.setStyle(Style.EMPTY
+				.withColor(TextColor.fromRgb(AQUA_RGB))
+				.withHoverEvent(new HoverEvent.ShowText(locationHover(location)))
+			);
+
+		if (location.isp() != null) {
+			value.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY))
+				.append(Component.literal(location.isp()).withStyle(ChatFormatting.GRAY));
+		}
+
+		send(source, ChatFormat.kv("Location", value));
+	}
+
+	private static Component locationHover(LocationInfo location) {
+		MutableComponent hover = Component.literal(location.describePlace()).withStyle(ChatFormatting.WHITE);
+
+		appendHoverLine(hover, "IP", location.queriedIp());
+		appendHoverLine(hover, "ISP", location.isp());
+
+		if (location.org() != null && !location.org().equals(location.isp())) {
+			appendHoverLine(hover, "Org", location.org());
+		}
+
+		appendHoverLine(hover, "AS", location.asName());
+		appendHoverLine(hover, "Timezone", location.timezone());
+
+		return hover.append(Component.literal("\nWhere the address points, not necessarily the host")
+			.withStyle(ChatFormatting.DARK_GRAY));
+	}
+
+	private static void appendHoverLine(MutableComponent hover, String label, String value) {
+		if (value == null) {
+			return;
+		}
+
+		hover.append(Component.literal("\n" + label + ": ").withStyle(ChatFormatting.GRAY))
+			.append(Component.literal(value).withStyle(ChatFormatting.WHITE));
 	}
 
 	private static void printSoftware(FabricClientCommandSource source, String brand) {
@@ -302,11 +355,13 @@ public final class ServerInsightCommand {
 	private static void printMultiplayer(FabricClientCommandSource source, Minecraft mc, ClientPacketListener network) {
 		ServerData serverInfo = mc.getCurrentServer();
 		String displayAddress;
+		String host;
 		int port;
 
 		if (serverInfo != null) {
 			displayAddress = serverInfo.ip;
 			ServerAddress parsed = ServerAddress.parseString(displayAddress);
+			host = parsed.getHost();
 			port = parsed.getPort();
 			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolvedIp(parsed.getHost()), port)));
 			Component motd = Objects.requireNonNullElse(serverInfo.motd, Component.literal("N/A").withStyle(ChatFormatting.DARK_GRAY));
@@ -316,10 +371,12 @@ public final class ServerInsightCommand {
 		} else {
 			ServerAddress parsed = ServerAddress.parseString(network.getConnection().getRemoteAddress().toString());
 			displayAddress = parsed.getHost() + ":" + parsed.getPort();
+			host = parsed.getHost();
 			port = parsed.getPort();
 			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolvedIp(parsed.getHost()), port)));
 		}
 
+		printLocation(source, host);
 		printSoftware(source, network.serverBrand());
 
 		int online = safeOnlineCount(network);

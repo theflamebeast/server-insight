@@ -78,9 +78,19 @@ state/AddressResolver        async DNS, started on join so the command never blo
 detect/ServerSoftware        pure: brand string -> Paper/Fabric/vanilla/proxy + family
 detect/ServerMods            pure: server-declared channels -> server-side mod ids
 detect/CommandFingerprints   pure: command name -> plugin it implies (a GUESS)
+detect/LocationInfo          pure: geolocation JSON -> where the address points
+state/GeoLocator             the only third-party call: IP -> country, cached + throttled
+mixin/ServerEntryFlagMixin   flag + hover on each multiplayer server list entry
+mixin/EntryGeometryAccessor  interface mixin to reach the entry's layout accessors
 text/ChatFormat              branded prefix, gradient header, key/value lines
-mixin/…NetworkHandlerMixin   the only mixin: 3 injects on ClientPacketListener
+mixin/…NetworkHandlerMixin   3 injects on ClientPacketListener
 ```
+
+**A mixin the gametest never loads is an unguarded mixin.** Injection failures
+surface at class-load, so a target class the test never touches is never
+verified — `ServerEntryFlagMixin` shipped broken exactly once for this reason,
+because the server-list entry class only loads when that screen builds a row.
+Any new mixin needs a `Class.forName` on its target in the gametest at minimum.
 
 **Nothing in `detect/` holds state** — both are pure functions over data the
 client already has, called fresh at command time. Keep them that way; if
@@ -119,7 +129,31 @@ that says GUESS. **Never merge it into the confirmed buckets.** The per-source
 breakdown is the user's only handle on how much to trust the total, and a mod
 that inflates its plugin count with guesses is worse than one that finds fewer.
 
-## The probes are the only thing we send
+## Geolocation is the one thing that leaves the Minecraft connection
+
+The server-list flags need an IP-to-country lookup, which means calling a
+third-party HTTP API. That is a different kind of outbound traffic from
+everything else here, and the rules around it are not negotiable:
+
+- **Only look up addresses the user is actually looking at**, and cache the
+  result — successes *and* failures — for the session. `GeoLocator.lookup()` is
+  called from a render path, so an uncached failure would otherwise fire a
+  request every frame.
+- **Never send private or loopback addresses.** `isPublicAddress()` filters
+  them. A LAN address cannot be geolocated anyway, so sending it leaks the shape
+  of someone's home network in exchange for a guaranteed failure.
+- **Throttle below the published quota** (45/min; the code sits at 40) and park
+  everything on a 429. A server list can hold far more entries than the quota.
+- **Never block a render or the client thread on it.** `lookup()` returns cached
+  or null and does the work elsewhere; a missing flag means "not known yet".
+- The free endpoint is **HTTP, not HTTPS** — its free tier does not offer TLS.
+  Nothing sensitive goes over it (a hostname the user is about to connect to
+  anyway), but do not add anything that would be.
+- Tests must **never hit the live endpoint**. `LocationInfo.fromJson` is pure so
+  the parser is tested against a captured response; CI being offline or the
+  quota being exhausted must not fail a build.
+
+## The probes are the only thing we send to the Minecraft server
 
 The mod is passive except for tab-completion probes: one
 `ServerboundCommandSuggestionPacket` per plugin-listing alias the server actually

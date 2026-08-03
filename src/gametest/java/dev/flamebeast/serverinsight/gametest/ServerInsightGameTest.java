@@ -2,9 +2,12 @@ package dev.flamebeast.serverinsight.gametest;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.flamebeast.serverinsight.detect.CommandFingerprints;
+import dev.flamebeast.serverinsight.detect.LocationInfo;
 import dev.flamebeast.serverinsight.detect.ServerMods;
 import dev.flamebeast.serverinsight.state.AddressResolver;
+import dev.flamebeast.serverinsight.state.GeoLocator;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
+import net.minecraft.resources.Identifier;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.TestInput;
@@ -59,6 +62,9 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			assertFingerprintGuess(context);
 			assertNoVanillaCommandFingerprinted(context);
 			assertAddressResolverWorks(context);
+			assertGeolocationParsing();
+			assertFlagMixinApplies();
+			assertFlagTextureExists(context);
 			assertCommandRunsAndCompletesScan(context);
 
 			// Not compared against a reference — it is uploaded as a CI artifact so the
@@ -205,6 +211,90 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 
 		if (CommandFingerprints.size() < 50) {
 			throw new AssertionError("fingerprint table looks truncated: " + CommandFingerprints.size() + " entries");
+		}
+	}
+
+	/**
+	 * Geolocation, without touching the network.
+	 *
+	 * The parser is pure, so it can be fed a captured response directly. Doing it this
+	 * way is deliberate: a test that called the live endpoint would fail whenever CI is
+	 * offline or the free quota is exhausted, and would tell a third party about every
+	 * CI run. The private-address guard is the other half — it is what stops LAN
+	 * addresses from being sent anywhere at all.
+	 */
+	private static void assertGeolocationParsing() {
+		String response = """
+			{"status":"success","country":"Germany","countryCode":"DE","regionName":"Hesse",\
+			"city":"Frankfurt am Main","isp":"Hetzner Online GmbH","org":"Hetzner",\
+			"as":"AS24940 Hetzner Online GmbH","timezone":"Europe/Berlin","query":"1.2.3.4"}""";
+
+		LocationInfo info = LocationInfo.fromJson(response);
+		if (info == null) {
+			throw new AssertionError("failed to parse a well-formed geolocation response");
+		}
+
+		// Lowercased because the country code doubles as the flag texture name.
+		if (!"de".equals(info.countryCode())) {
+			throw new AssertionError("country code should be lowercased, got: " + info.countryCode());
+		}
+
+		if (!"Frankfurt am Main, Hesse, Germany".equals(info.describePlace())) {
+			throw new AssertionError("unexpected place description: " + info.describePlace());
+		}
+
+		// A failed lookup answers 200 with status=fail, so the body is the only signal.
+		if (LocationInfo.fromJson("{\"status\":\"fail\",\"message\":\"private range\"}") != null) {
+			throw new AssertionError("a failed lookup must not parse into a location");
+		}
+
+		if (LocationInfo.fromJson("not json") != null || LocationInfo.fromJson("") != null) {
+			throw new AssertionError("malformed responses must not parse into a location");
+		}
+
+		for (String priv : new String[]{"localhost", "127.0.0.1", "192.168.1.10", "10.0.0.5", "172.16.4.2", "::1"}) {
+			if (GeoLocator.isPublicAddress(priv)) {
+				throw new AssertionError(priv + " must never be sent to the geolocation service");
+			}
+		}
+
+		for (String pub : new String[]{"mc.hypixel.net", "1.2.3.4", "172.5.5.5"}) {
+			if (!GeoLocator.isPublicAddress(pub)) {
+				throw new AssertionError(pub + " should be eligible for lookup");
+			}
+		}
+	}
+
+	/**
+	 * Forces the server-list entry class to load so its mixin is applied.
+	 *
+	 * Without this the flag mixin is completely unguarded. It targets a class the client
+	 * only loads once the multiplayer screen builds an entry, which never happens in
+	 * this test — so a renamed extractContent would sail through CI and break only when
+	 * a user opened the server list. defaultRequire is 1, so a missing target throws
+	 * during mixin application, which is exactly what loading the class triggers.
+	 */
+	private static void assertFlagMixinApplies() {
+		try {
+			Class.forName("net.minecraft.client.gui.screens.multiplayer.ServerSelectionList$OnlineServerEntry");
+		} catch (ClassNotFoundException renamed) {
+			throw new AssertionError("server list entry class is gone; the flag mixin needs retargeting", renamed);
+		} catch (Throwable injectionFailed) {
+			throw new AssertionError("flag mixin failed to apply to the server list entry", injectionFailed);
+		}
+	}
+
+	/**
+	 * Every country code the parser can produce needs a flag texture, or the server list
+	 * silently renders a missing-texture square.
+	 */
+	private static void assertFlagTextureExists(ClientGameTestContext context) {
+		boolean present = context.computeOnClient(mc -> mc.getResourceManager()
+			.getResource(Identifier.fromNamespaceAndPath("serverinsight", "textures/gui/flags/de.png"))
+			.isPresent());
+
+		if (!present) {
+			throw new AssertionError("flag textures are missing from the built resources");
 		}
 	}
 
