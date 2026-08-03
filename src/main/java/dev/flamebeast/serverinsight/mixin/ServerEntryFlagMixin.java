@@ -44,12 +44,8 @@ public abstract class ServerEntryFlagMixin {
 	private static final int TEXTURE_WIDTH = 32;
 	private static final int TEXTURE_HEIGHT = 24;
 
-	/**
-	 * Width of the ping bars vanilla draws hard against the row's right edge, plus a
-	 * gap. The flag sits immediately left of them: that is as far right as it can go
-	 * without drawing on top of the ping indicator.
-	 */
-	private static final int RIGHT_MARGIN = 18;
+	/** Gap between the row's right edge and the flag, which sits outside the row. */
+	private static final int GAP_FROM_ROW = 4;
 
 	// RETURN, not TAIL. Vanilla leaves extractContent early for a server that is still
 	// being pinged, and TAIL only injects at the final return — so rows in that state
@@ -67,9 +63,10 @@ public abstract class ServerEntryFlagMixin {
 			return;
 		}
 
-		// Hard against the right edge of the row, vertically centred.
+		// OUTSIDE the row, in the empty space to its right — not tucked inside it next to
+		// the ping bars. Vertically centred on the row it belongs to.
 		EntryGeometryAccessor geometry = (EntryGeometryAccessor) this;
-		int x = geometry.serverinsight$x() + geometry.serverinsight$width() - FLAG_WIDTH - RIGHT_MARGIN;
+		int x = geometry.serverinsight$x() + geometry.serverinsight$width() + GAP_FROM_ROW;
 		int y = geometry.serverinsight$contentYMiddle() - FLAG_HEIGHT / 2;
 
 		// The source region must be the WHOLE texture, or this crops instead of scaling.
