@@ -100,7 +100,7 @@ public final class ServerInsightCommand {
 				.withColor(TextColor.fromLegacyFormat(ChatFormatting.DARK_GRAY))
 				.withUnderlined(true)
 				.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
-				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Open support link").withStyle(ChatFormatting.GRAY)))
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Support me here!").withStyle(ChatFormatting.GRAY)))
 			);
 
 		send(source, ChatFormat.prefix()

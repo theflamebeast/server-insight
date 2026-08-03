@@ -58,7 +58,8 @@ well it's ticking. One command, no server-side install.
 - **Java**: 25+
 
 ## Preview
-![Preview](https://cdn.modrinth.com/data/cdJrY41V/images/0fc75292051ee8a174f5f826a19a489b81db2de0.png)
+![Server Info](https://cdn.modrinth.com/data/cdJrY41V/images/0fc75292051ee8a174f5f826a19a489b81db2de0.png)
+![Country Flag & Info](https://cdn.modrinth.com/data/cached_images/ca100c1cdef0cfa522d059c14bf1984614144db2.png)
 
 ## [Support / Suggestions](https://github.com/theflamebeast/server-insight/issues)
 If you find a server where output looks wrong, please include:
