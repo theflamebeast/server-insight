@@ -257,6 +257,18 @@ Current targets live in `gradle.properties`, `build.gradle` (Loom),
 - **This mod ships to real users on Modrinth.** A broken build is a mod that
   crashes someone's client on launch. Don't push a version bump you haven't at
   least verified compiles and whose mixin targets you haven't confirmed exist.
+- **Any diff touching more than one file gets `/code-review` — and you must ASK
+  for it, because you cannot run it.** With no tests here and a release channel
+  pointing at real users, it is the only thing that hunts correctness bugs before
+  they ship.
+  - **It is user-invoked only.** The `Skill` tool refuses it
+    (`disable-model-invocation`) and it is billed — not reachable via `Bash`, a
+    subagent, or a lookalike skill. **Verified 2026-08-06** by attempting it.
+  - **So the gate is a handoff, not a step you complete.** Finish, then say it
+    outright: *"run `/code-review` on this diff"*, with the file list and what to
+    look at. No argument reviews the current branch and needs no PR.
+  - **Never mark it ✅ off your own re-read.** Report that as `self-reviewed`, on
+    its own line, and leave the real gate ⏳ pending-developer.
 - **Verify against a real server, not just singleplayer.** Most of what this mod
   reports (brand, MOTD, protocol, plugins, ping, TPS) is either absent or
   meaningless in singleplayer. If a change touches detection or formatting, say
