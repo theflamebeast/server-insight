@@ -21,4 +21,6 @@
 #   recorded as ever having run on this repo.
 #   It ships to real users on Modrinth and a bad mixin crashes a client on
 #   launch, so the mixins and the detection tiers are where a first run pays:
-#     /code-review high src/main/java/dev/flamebeast/serverinsight/mixin src/main/java/dev/flamebeast/serverinsight/detect
+#     /code-review max 1410dd7
+#   (level + an explicit base ref. Paths are not a documented argument; name the
+#   mixin and detect packages in words instead.)

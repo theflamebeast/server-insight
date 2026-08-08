@@ -288,22 +288,26 @@ Current targets live in `gradle.properties`, `build.gradle` (Loom),
 
       | Situation | Command |
       |---|---|
-      | The normal case — named paths | `/code-review high src/main/java/dev/flamebeast/serverinsight/<pkg>` |
-      | A mixin changed — a bad target crashes a client on launch | `/code-review max src/main/java/dev/flamebeast/serverinsight/mixin` |
-      | Detection tiers or the estimate labelling | `/code-review high src/main/java/dev/flamebeast/serverinsight/detect src/main/java/dev/flamebeast/serverinsight/text` |
-      | Cheap pass on a one-file change | `/code-review low <the file>` |
-      | Deepest — multi-agent cloud review of the whole branch | `/code-review ultra` |
+      | The normal case — review the current diff | `/code-review high` |
+      | It reports an empty diff (this repo commits straight to `main`, so a pushed branch has none) — pass the marker sha as an explicit base | `/code-review high <sha from .claude/last-reviewed>` |
+      | A mixin changed, or anything on the release path — this ships to real users on Modrinth and a bad target crashes a client on launch | `/code-review max` |
+      | Cheap pass on a one-file change | `/code-review low` |
+      | Apply the findings to the working tree as well | `/code-review high --fix` |
+      | Deepest — multi-agent cloud review of the branch | `/code-review ultra` |
 
-      **Levels: `low` · `medium` · `high` · `xhigh` · `max`, plus `ultra`.**
-      `high` is the default worth reaching for; `max` for mixins and anything on
-      the release path, since this ships to real users on Modrinth. Omitting the
-      level uses the CLI's own default. *(The level names come from the
-      reviewer's own `level` field and `ultra` from the CLI's help; the argument
-      order has not been tested from here. If a form is rejected, fall back to
-      `/code-review <paths>` and correct this table.)*
-    - **Always pass PATHS.** This repo commits straight to `main`, so a pushed
-      branch has no diff against `origin/main` and a bare `/code-review` finds
-      nothing to read.
+      **`low` · `medium` · `high` · `xhigh` · `max` are effort levels** — the
+      same scale as `/effort` — **plus `ultra`** for the cloud review. `high` is
+      the default worth reaching for; `max` for mixins and releases.
+    - **Name the paths in WORDS, not as arguments.** `/code-review high` reviews
+      the current diff; the documented target arguments are a **PR number** and
+      an **explicit base ref**, and **passing file paths is not documented** — so
+      write *"look at `detect/`, especially the confidence tiers"* in the handoff
+      rather than appending paths and assuming they scope it. **The sha in
+      `.claude/last-reviewed` is the right base ref**, which is the whole reason
+      the marker exists. *(Evidence: the CLI's own example is
+      `/code-review high`; `<level> <pr#>` and "pass an explicit base" are from
+      its changelog. Paths were asserted here on 2026-08-07 with no evidence and
+      the claim was wrong — don't reintroduce it without testing.)*
     - **Advance the file ONLY when the developer says a review ran**, to the sha
       they reviewed up to, and commit that with the rest of the work. Never
       advance it off your own re-read — that is `self-reviewed`, a different
