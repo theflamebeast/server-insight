@@ -1,0 +1,24 @@
+# The last commit the developer has actually run /code-review on in this repo.
+#
+# Read by the "report the review backlog" rule in CLAUDE.md: everything in
+# `git log --oneline <sha>..HEAD` is unreviewed and gets listed at the end of a
+# task, together with the command to review it. A committed file rather than
+# memory, because the backlog has to survive a new session — that is the whole
+# failure this exists to stop.
+#
+# UPDATE IT only when the developer says a review has been run, to the sha they
+# reviewed UP TO, and commit that change with the rest of the work. Never advance
+# it on your own re-read; that is `self-reviewed`, which is not this gate.
+#
+# Any `# OPEN:` block below the sha is part of the backlog too: a reviewed-but-
+# unfixed area is not a passed gate. Delete one only when its fix is committed.
+# (This header deliberately does not start with the marker, so the grep that
+# collects those blocks does not match the instructions describing them.)
+1410dd7
+
+# OPEN: this baseline means "tracking starts here", NOT "everything before it
+#   passed". 1410dd7 was simply HEAD when tracking began, and no /code-review is
+#   recorded as ever having run on this repo.
+#   It ships to real users on Modrinth and a bad mixin crashes a client on
+#   launch, so the mixins and the detection tiers are where a first run pays:
+#     /code-review high src/main/java/dev/flamebeast/serverinsight/mixin src/main/java/dev/flamebeast/serverinsight/detect
