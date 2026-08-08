@@ -269,56 +269,16 @@ Current targets live in `gradle.properties`, `build.gradle` (Loom),
     look at. No argument reviews the current branch and needs no PR.
   - **Never mark it ✅ off your own re-read.** Report that as `self-reviewed`, on
     its own line, and leave the real gate ⏳ pending-developer.
-  - **Report the whole REVIEW BACKLOG at the end of every task, not just this
-    task's commits.** `/code-review` is billed and user-invoked, so it gets
-    skipped, and skipped commits pile up with nothing in git recording it.
-    **Derive it from a file, never from memory** — the backlog has to survive a
-    new session, which is exactly when it would otherwise be lost.
-    - **`.claude/last-reviewed` holds the sha the developer last actually
-      reviewed**, plus `# OPEN:` blocks for findings reported but not yet fixed:
-      ```bash
-      s=$(grep -m1 -E '^[0-9a-f]{7,40}$' .claude/last-reviewed)
-      git log --oneline "$s..HEAD"                  # every line is unreviewed
-      grep -A20 '^# OPEN:' .claude/last-reviewed    # reported, not yet fixed
-      ```
-    - **Close the final message with that list AND the exact command to run**,
-      under the skills line-up. Say how many, don't bury it in prose, and give a
-      command ready to paste — **a level and real paths, never a bare
-      `/code-review`**:
-
-      | Situation | Command |
-      |---|---|
-      | The normal case — review the current diff | `/code-review high` |
-      | It reports an empty diff (this repo commits straight to `main`, so a pushed branch has none) — pass the marker sha as an explicit base | `/code-review high <sha from .claude/last-reviewed>` |
-      | A mixin changed, or anything on the release path — this ships to real users on Modrinth and a bad target crashes a client on launch | `/code-review max` |
-      | Cheap pass on a one-file change | `/code-review low` |
-      | Apply the findings to the working tree as well | `/code-review high --fix` |
-      | Deepest — multi-agent cloud review of the branch | `/code-review ultra` |
-
-      **`low` · `medium` · `high` · `xhigh` · `max` are effort levels** — the
-      same scale as `/effort` — **plus `ultra`** for the cloud review. `high` is
-      the default worth reaching for; `max` for mixins and releases.
-    - **Name the paths in WORDS, not as arguments.** `/code-review high` reviews
-      the current diff; the documented target arguments are a **PR number** and
-      an **explicit base ref**, and **passing file paths is not documented** — so
-      write *"look at `detect/`, especially the confidence tiers"* in the handoff
-      rather than appending paths and assuming they scope it. **The sha in
-      `.claude/last-reviewed` is the right base ref**, which is the whole reason
-      the marker exists. *(Evidence: the CLI's own example is
-      `/code-review high`; `<level> <pr#>` and "pass an explicit base" are from
-      its changelog. Paths were asserted here on 2026-08-07 with no evidence and
-      the claim was wrong — don't reintroduce it without testing.)*
-    - **Advance the file ONLY when the developer says a review ran**, to the sha
-      they reviewed up to, and commit that with the rest of the work. Never
-      advance it off your own re-read — that is `self-reviewed`, a different
-      thing. Marking without reviewing is worse than no marker, because it is
-      harder to detect.
-    - **Recommend what is worth the money.** A billed run rarely repays a docs-
-      or comment-only commit; the ones with real logic do. List everything, then
-      name the subset you would actually spend on and why.
-    - **The installed `code-review` *plugin* is NOT this gate.** It reviews a
-      **pull request** (`gh pr diff`, then comments on the PR), so with no PR it
-      has nothing to read. The gate is the built-in command the developer runs.
+  - **The backlog, the syntax and the marker are `# The review gate` in
+    `~/.claude/CLAUDE.md`** — it loads in every session and is **the only copy. Do not
+    restate it here.** What is genuinely local to this repo:
+    - **Default effort `high`; `max` for mixins and anything on the release path.** This
+      ships to real users on Modrinth and a bad mixin target crashes a client on launch.
+    - **Areas worth naming in the handoff, in prose** — paths are not an argument: the
+      `mixin` package, `detect` (the three confidence tiers), and `text` (where an
+      estimate must be labelled as one).
+    - **Branch `main`, committed straight to it**, so a pushed branch has no diff — pass
+      the sha from `.claude/last-reviewed` as the base ref.
 - **Verify against a real server, not just singleplayer.** Most of what this mod
   reports (brand, MOTD, protocol, plugins, ping, TPS) is either absent or
   meaningless in singleplayer. If a change touches detection or formatting, say
