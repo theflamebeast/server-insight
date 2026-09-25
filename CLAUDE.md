@@ -12,59 +12,7 @@ user-triggered probe (see "The plugin scan is the only thing we send").
 
 Published on Modrinth: https://modrinth.com/mod/server-insight
 
-## Tone
-
-Be blunt. Be serious. No sugarcoating, no nitpicking. If something is broken or a
-bad idea, say so in a sentence and move on — don't cushion it.
-
-## Build & verify
-
-```bash
-./gradlew build              # compile + remap + jar
-./gradlew runClientGameTest  # boots a real client + dedicated server, ~2 min. THE gate.
-./gradlew runClient          # interactive dev client, for looking at things yourself
-./gradlew genSources         # decompile MC when you need to read vanilla code
-```
-
-`runClientGameTest` launches an actual Minecraft window and a real dedicated
-server, plays through a join, runs the command and asserts on the result. It is
-slow and it is the only check that can fail for the reason this mod actually
-breaks — run it before calling any change to detection, formatting, or the
-Minecraft version done. CI runs it headless under Xvfb on every push.
-
-- **Use `./gradlew`, never a bare `javac`/`java`.** `java` on PATH here is 24;
-  `JAVA_HOME` points at Adoptium **25**, which is what the build needs. The
-  wrapper honours `JAVA_HOME`; your shell doesn't.
-- **`bin/` is stale Eclipse output.** Gitignored, not the build output, ignore it.
-  Real artifacts land in `build/libs/`.
-- CI (`.github/workflows/build.yml`) runs `./gradlew build` on JDK 25 and uploads
-  the jar as a run artifact, so a build can be grabbed and tested in-game without
-  a local Gradle setup.
-
-### `./gradlew build` passing does NOT mean the mod works
-
-This is the single most important thing to know about this repo. Mixins are
-matched by **method name at runtime**, not at compile time. If Mojang renames
-`handleSetTime`, the build stays green and the mod dies on launch with an
-injection failure. The three targets in
-`src/main/java/dev/flamebeast/serverinsight/mixin/ClientPlayNetworkHandlerMixin.java`
-are the whole risk surface.
-
-`./gradlew runClientGameTest` is the real answer: the mixin config sets
-`defaultRequire: 1`, so a missing target throws while `ClientPacketListener`
-loads, and the test crashes on connect before any assertion runs. The test also
-asserts each inject actually *fired*, which catches the subtler case where the
-method still exists but is no longer called on the path we assumed.
-
-Cheap check without launching the game — javap the remapped jar Loom cached:
-
-```bash
-javap -p -cp ~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-deobf/<VER>/minecraft-merged-deobf-<VER>.jar \
-  net.minecraft.client.multiplayer.ClientPacketListener | grep -E 'handleSetTime|handleCommands|handleCommandSuggestions'
-```
-
-All three must be present with the expected packet parameter. If they are, the
-mixin will apply. `runClient` is the real proof; the javap check is the fast one.
+Shared workflow rules: ~/.claude/CLAUDE.md § Every repo. This file only holds what is local.
 
 ## Architecture
 
@@ -114,6 +62,30 @@ The mixin never formats and the command never touches packets. Keep it that way.
 - Packet handlers run on the client thread, but a `CompletableFuture` completed
   from elsewhere does not. Hop back with `mc.execute(...)` before touching client
   state or sending chat — `ServerInsightCommand.printPlugins` already does.
+
+## Conventions
+
+- **Tabs, not spaces**, in both Java and Gradle files. Match the surrounding file.
+- **All chat output goes through `ChatFormat`** (`kv`, `header`, `prefix`). Never
+  build a raw `Component` line in the command — the branded prefix on every line
+  is the mod's identity.
+- Colors: `ChatFormatting` constants where a vanilla color fits, the named RGB
+  constants at the top of `ServerInsightCommand` otherwise. Don't scatter new
+  hex literals through the file.
+- Values the user will want elsewhere (address, coords, plugin list, individual
+  plugin names) get a `ClickEvent.CopyToClipboard` plus a `HoverEvent` saying so.
+  This is the mod's main quality-of-life feature; new fields should follow it.
+- `POPULAR_PLUGINS` is a data table — lowercase entries, additions only. Adding a
+  known plugin means adding a string, never a branch.
+- Comments (global rule: none unless WHY) — where one IS earned here: inference
+  whose method isn't obvious. The TPS window and the scan timeout are the kind of
+  thing that needs a line.
+- Keep files small, single responsibility, no spaghetti. If the command file
+  starts growing sections, split by concern (it's already close to the limit).
+- Prefer minimal safe changes over broad rewrites. Preserve existing behaviour
+  unless the request says to change it.
+- When removing a feature, clean up its registrations, imports and state. No
+  orphaned code.
 
 ## Plugin detection has three confidence tiers — keep them separate
 
@@ -212,30 +184,6 @@ users that we're honest about it.
   throw out of the command — the existing `try`/`catch` around biome lookup and
   `safeOnlineCount` is the pattern.
 
-## Conventions
-
-- **Tabs, not spaces**, in both Java and Gradle files. Match the surrounding file.
-- **All chat output goes through `ChatFormat`** (`kv`, `header`, `prefix`). Never
-  build a raw `Component` line in the command — the branded prefix on every line
-  is the mod's identity.
-- Colors: `ChatFormatting` constants where a vanilla color fits, the named RGB
-  constants at the top of `ServerInsightCommand` otherwise. Don't scatter new
-  hex literals through the file.
-- Values the user will want elsewhere (address, coords, plugin list, individual
-  plugin names) get a `ClickEvent.CopyToClipboard` plus a `HoverEvent` saying so.
-  This is the mod's main quality-of-life feature; new fields should follow it.
-- `POPULAR_PLUGINS` is a data table — lowercase entries, additions only. Adding a
-  known plugin means adding a string, never a branch.
-- Comments explain **why** or what a non-obvious mechanism is. Never restate the
-  code. Class-level docs on anything holding state or doing inference; the TPS
-  window and the scan timeout are the kind of thing that needs a line.
-- Keep files small, single responsibility, no spaghetti. If the command file
-  starts growing sections, split by concern (it's already close to the limit).
-- Prefer minimal safe changes over broad rewrites. Preserve existing behaviour
-  unless the request says to change it.
-- When removing a feature, clean up its registrations, imports and state. No
-  orphaned code.
-
 ## Porting to a new Minecraft version
 
 This repo gets bumped every MC release and the lookup URLs are easy to forget.
@@ -249,85 +197,98 @@ Current targets live in `gradle.properties`, `build.gradle` (Loom),
 
 ## Workflow
 
-- **Ask clarifying questions FIRST, before doing any work.** If there is even
-  slight uncertainty about scope, intent, which variant of a feature, or how
-  something should look/behave — ask (use AskUserQuestion) and wait. A wrong
-  guess costs far more than a question. Skip this only when the request is
-  completely unambiguous.
+### Build, test, run
+
+```bash
+./gradlew build              # compile + remap + jar
+./gradlew runClientGameTest  # boots a real client + dedicated server, ~2 min. THE gate.
+./gradlew runClient          # interactive dev client, for looking at things yourself
+./gradlew genSources         # decompile MC when you need to read vanilla code
+```
+
+`runClientGameTest` launches an actual Minecraft window and a real dedicated
+server, plays through a join, runs the command and asserts on the result. It is
+slow and it is the only check that can fail for the reason this mod actually
+breaks — run it before calling any change to detection, formatting, or the
+Minecraft version done. CI runs it headless under Xvfb on every push.
+
+- **Use `./gradlew`, never a bare `javac`/`java`.** `java` on PATH here is 24;
+  `JAVA_HOME` points at Adoptium **25**, which is what the build needs. The
+  wrapper honours `JAVA_HOME`; your shell doesn't.
+- **`bin/` is stale Eclipse output.** Gitignored, not the build output, ignore it.
+  Real artifacts land in `build/libs/`.
+- CI (`.github/workflows/build.yml`) runs `./gradlew build` on JDK 25 and uploads
+  the jar as a run artifact, so a build can be grabbed and tested in-game without
+  a local Gradle setup.
+
+#### `./gradlew build` passing does NOT mean the mod works
+
+This is the single most important thing to know about this repo. Mixins are
+matched by **method name at runtime**, not at compile time. If Mojang renames
+`handleSetTime`, the build stays green and the mod dies on launch with an
+injection failure. The three targets in
+`src/main/java/dev/flamebeast/serverinsight/mixin/ClientPlayNetworkHandlerMixin.java`
+are the whole risk surface.
+
+`./gradlew runClientGameTest` is the real answer: the mixin config sets
+`defaultRequire: 1`, so a missing target throws while `ClientPacketListener`
+loads, and the test crashes on connect before any assertion runs. The test also
+asserts each inject actually *fired*, which catches the subtler case where the
+method still exists but is no longer called on the path we assumed.
+
+Cheap check without launching the game — javap the remapped jar Loom cached:
+
+```bash
+javap -p -cp ~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-deobf/<VER>/minecraft-merged-deobf-<VER>.jar \
+  net.minecraft.client.multiplayer.ClientPacketListener | grep -E 'handleSetTime|handleCommands|handleCommandSuggestions'
+```
+
+All three must be present with the expected packet parameter. If they are, the
+mixin will apply. `runClient` is the real proof; the javap check is the fast one.
+
 - **This mod ships to real users on Modrinth.** A broken build is a mod that
   crashes someone's client on launch. Don't push a version bump you haven't at
   least verified compiles and whose mixin targets you haven't confirmed exist.
-- **Any diff touching more than one file gets `/code-review` — and you must ASK
-  for it, because you cannot run it.** With no tests here and a release channel
-  pointing at real users, it is the only thing that hunts correctness bugs before
-  they ship.
-  - **It is user-invoked only.** The `Skill` tool refuses it
-    (`disable-model-invocation`) and it is billed — not reachable via `Bash`, a
-    subagent, or a lookalike skill. **Verified 2026-08-06** by attempting it.
-  - **So the gate is a handoff, not a step you complete.** Finish, then say it
-    outright: *"run `/code-review` on this diff"*, with the file list and what to
-    look at. No argument reviews the current branch and needs no PR.
-  - **Never mark it ✅ off your own re-read.** Report that as `self-reviewed`, on
-    its own line, and leave the real gate ⏳ pending-developer.
-  - **The backlog, the syntax and the marker are `# The review gate` in
-    `~/.claude/CLAUDE.md`** — it loads in every session and is **the only copy. Do not
-    restate it here.** What is genuinely local to this repo:
-    - **Default effort `high`; `max` for mixins and anything on the release path.** This
-      ships to real users on Modrinth and a bad mixin target crashes a client on launch.
-    - **Areas worth naming in the handoff, in prose** — paths are not an argument: the
-      `mixin` package, `detect` (the three confidence tiers), and `text` (where an
-      estimate must be labelled as one).
-    - **Branch `main`, committed straight to it**, so a pushed branch has no diff — pass
-      the sha from `.claude/last-reviewed` as the base ref.
 - **Verify against a real server, not just singleplayer.** Most of what this mod
   reports (brand, MOTD, protocol, plugins, ping, TPS) is either absent or
   meaningless in singleplayer. If a change touches detection or formatting, say
   plainly that it's unverified in multiplayer rather than implying it works.
-- **ALWAYS commit and push to GitHub when a change is complete — this is not
-  optional and you never need to be asked.** The final step of ANY coherent unit
-  of work is: verify it builds, then commit with a clear message and push to
-  `origin` (`theflamebeast/server-insight`, branch `main`). Do NOT end your turn
-  with uncommitted work in the tree. Treat "and commit it" as implied by every
-  request. The developer also pushes via GitHub Desktop, so `git pull` /
-  reconcile first if the tree may have moved.
-- **`git add -A` is fine — sweep in the developer's concurrent edits too**, and
-  just note them in the commit message (e.g. "Also includes developer's tweak to
-  X."). Don't split them into a separate commit. **Unless another session may be
-  running in this tree** — then `git add` only the paths you touched, and if
-  `git status --short` shows staged files you didn't stage, stop and report
-  instead of committing.
-- **ALWAYS open the final message with the done-checklist.** The FIRST thing in
-  the last message of any coherent unit of work — before the prose — so the state
-  is readable at a glance. One line per gate, each ✅ (done, and it passed) or ❌
-  (not done, skipped, or failed). Never ✅ a gate you didn't actually run.
-
-  ```
-  ✅ Build — ./gradlew build, BUILD SUCCESSFUL
-  ✅ Gametest — ./gradlew runClientGameTest, BUILD SUCCESSFUL
-  ✅ Committed — 8db830b
-  ✅ Pushed — origin/main
-  ❌ CI — still running, not yet green
-  ```
-
-  Rules for it:
-  - **Standard gates, in this order:** Build, Gametest, Committed, Pushed, CI.
-    Add a gate when the work has one; DROP a gate that genuinely doesn't apply
-    rather than marking it ❌ — ❌ means "should have happened and didn't", not
-    "not applicable". A README-only change has no Gametest line.
-  - **Every line carries its evidence** — the commit sha, the literal tool
-    output, the branch. `✅ Build` alone is useless.
-  - **❌ is a feature, not a failure to hide.** If you skipped the gametest
-    because it takes two minutes, say that on the line rather than implying it
-    passed.
-  - **CI means actually checking it** (`gh run list --limit 3`), not assuming
-    green because it built locally.
-  - Skip the block entirely for pure conversation — it belongs to WORK.
-- **Stop when the task is done. Do NOT roll straight into follow-up work.**
-  Instead, end by proposing 1–3 SHORT, concrete next steps the change opens up —
-  real ideas tightly relevant to what was just touched, easy to decline. Propose
-  and stop; never start building a follow-up without a go-ahead.
+- **Docs to update with the code:** a change to the command's output, the
+  detection logic, dependencies, or the supported MC version means `README.md`
+  (and this file, if a rule changed) changes in the same commit.
 - **Leave clear breadcrumbs.** If you hit something half-finished or deferred,
   say so explicitly in the final message rather than burying it in a comment.
-- **Update the docs with the code.** A change to the command's output, the
-  detection logic, dependencies, or the supported MC version means `README.md`
-  (and this file, if a rule changed) gets updated in the same commit.
+
+### Done-checklist gates
+
+**Build, Gametest, Multiplayer**, then the standard tail (Review, Committed,
+Pushed, CI). A README-only change has no Gametest line. If you skipped the
+gametest because it takes two minutes, say that on the line rather than implying
+it passed.
+
+```
+✅ Build — ./gradlew build, BUILD SUCCESSFUL
+✅ Gametest — ./gradlew runClientGameTest, BUILD SUCCESSFUL
+⏳ Multiplayer — detection change unverified against a real server
+⏳ Review — /code-review is user-only. Self-reviewed the 2-file diff
+✅ Committed — 8db830b
+✅ Pushed — origin/main
+❌ CI — still running, not yet green
+```
+
+**Skills for the line-up here:** `minecraft-port`.
+
+- **`origin` is `theflamebeast/server-insight`, branch `main`.**
+
+### Review
+
+- **Why the gate matters here:** with no unit tests and a release channel
+  pointing at real users, it is the only thing that hunts correctness bugs before
+  they ship.
+- **Default effort `high`; `max` for mixins and anything on the release path.** This
+  ships to real users on Modrinth and a bad mixin target crashes a client on launch.
+- **Areas worth naming in the handoff, in prose** — paths are not an argument: the
+  `mixin` package, `detect` (the three confidence tiers), and `text` (where an
+  estimate must be labelled as one).
+- **Branch `main`, committed straight to it**, so a pushed branch has no diff — pass
+  the sha from `.claude/last-reviewed` as the base ref.
