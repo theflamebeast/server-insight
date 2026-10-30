@@ -42,11 +42,15 @@ jobs:
           if-no-files-found: error
 
   # Separate job because it boots a real Minecraft client and a dedicated server,
-  # which takes minutes and needs a display — no reason to make the jar build wait
-  # on it. This is the only check that can catch a mixin whose target Mojang renamed,
+  # which takes minutes and a software renderer — no reason to make the jar build
+  # wait on it. This is the only check that can catch a mixin whose target Mojang renamed,
   # since that failure is invisible to the compiler.
   client-gametest:
     runs-on: ubuntu-latest
+    # A normal run is a few minutes. When Minecraft cannot create ANY render backend it
+    # raises a fatal-error dialog, and on a headless runner nothing ever dismisses it —
+    # without this the job sits until GitHub's 6-hour limit.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -61,20 +65,21 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # Minecraft needs a window and an OpenGL 3.2 context. Xvfb supplies the window;
-      # Mesa's llvmpipe supplies the context in software, since runners have no GPU.
-      - name: Install virtual display and software OpenGL
+      # No Xvfb, deliberately. Since 26.3 the window comes from SDL3, which falls back to
+      # an offscreen driver when there is no display at all. Under Xvfb it found no
+      # matching GLX visual, so OpenGL failed — and with no Vulkan driver installed,
+      # every backend failed. Mesa's lavapipe gives Vulkan in software, since runners
+      # have no GPU. This matches Fabric API's own 26.3 client-gametest job.
+      - name: Install software Vulkan
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libgl1 libglx-mesa0
+          sudo apt-get install -y mesa-vulkan-drivers
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
       - name: Run client gametest
-        env:
-          LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a --server-args="-screen 0 1280x720x24" ./gradlew runClientGameTest
+        run: ./gradlew runClientGameTest
 
       # Uploaded on failure too — when this job breaks, the screenshot of the chat
       # output is usually the fastest way to see what the mod actually printed.
