@@ -40,7 +40,7 @@ public record ServerSoftware(String name, Family family, String version, String 
 		}
 	}
 
-	/** Longest-first, so "craftbukkit" is not swallowed by "bukkit" and "neoforge" not by "forge". */
+	/** First match wins, so a name must precede any name it contains: "craftbukkit" before "bukkit", "neoforge" before "forge". */
 	private static final String[][] KNOWN = {
 		{"folia", "Folia", "BUKKIT"},
 		{"purpur", "Purpur", "BUKKIT"},

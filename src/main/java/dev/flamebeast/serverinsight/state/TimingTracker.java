@@ -43,7 +43,7 @@ public final class TimingTracker {
 	}
 
 	/**
-	 * Number of packets in the window. getEstimatedTps() cannot distinguish "healthy"
+	 * Number of packets in the window. estimatedTps() cannot distinguish "healthy"
 	 * from "no data" on its own, so this is what proves the mixin feeding it is firing.
 	 */
 	public int sampleCount() {

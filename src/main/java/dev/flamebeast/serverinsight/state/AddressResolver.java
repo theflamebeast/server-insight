@@ -1,5 +1,7 @@
 package dev.flamebeast.serverinsight.state;
 
+import net.minecraft.util.Util;
+
 import java.net.InetAddress;
 import java.util.concurrent.CompletableFuture;
 
@@ -29,6 +31,9 @@ public final class AddressResolver {
 		host = rawHost;
 		resolved = null;
 
+		// Minecraft's pool for blocking IO, not the shared ForkJoin pool: a DNS lookup
+		// can sit for seconds, and the common pool is a handful of threads that other
+		// mods and the game itself also lean on.
 		CompletableFuture
 			.supplyAsync(() -> {
 				try {
@@ -38,7 +43,7 @@ public final class AddressResolver {
 					// shows what the user typed, which is what they care about anyway.
 					return null;
 				}
-			})
+			}, Util.nonCriticalIoPool())
 			.thenAccept(ip -> {
 				if (rawHost.equals(host)) {
 					resolved = ip;

@@ -108,9 +108,8 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 	}
 
 	/**
-	 * handleSetTime -> TimingTracker. getEstimatedTps() reports 20.0 when starved as
-	 * well as when healthy, so the sample count is the only real witness that the
-	 * inject ran.
+	 * handleSetTime -> TimingTracker. estimatedTps() alone cannot tell starved from
+	 * healthy, so the sample count is the only real witness that the inject ran.
 	 */
 	private static void assertTimeMixinFired(ClientGameTestContext context) {
 		// An empty estimate is the honest answer when starved, so waiting for a value to
@@ -259,15 +258,43 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 			throw new AssertionError("malformed responses must not parse into a location");
 		}
 
-		for (String priv : new String[]{"localhost", "127.0.0.1", "192.168.1.10", "10.0.0.5", "172.16.4.2", "::1"}) {
-			if (GeoLocator.isPublicAddress(priv)) {
-				throw new AssertionError(priv + " must never be sent to the geolocation service");
+		// Only a well-formed "fail" is final. Everything else — rate limit, server error, a
+		// captive portal's HTML login page served as 200 — says nothing about the address
+		// and must leave the host retryable. These used to all be cached as permanent
+		// failures, so being offline at launch cost every flag for the session.
+		if (GeoLocator.interpret(200, response).outcome() != GeoLocator.Outcome.FOUND
+			|| GeoLocator.interpret(200, response).location() == null) {
+			throw new AssertionError("a successful reply must classify as FOUND with a location");
+		}
+
+		if (GeoLocator.interpret(200, "{\"status\":\"fail\",\"message\":\"private range\"}").outcome()
+			!= GeoLocator.Outcome.UNPLACEABLE) {
+			throw new AssertionError("a well-formed fail reply is the one final answer");
+		}
+
+		for (Object[] transientReply : new Object[][]{{200, "<html>Hotel wifi login</html>"}, {429, ""}, {503, "oops"}}) {
+			GeoLocator.Outcome outcome = GeoLocator.interpret((int) transientReply[0], (String) transientReply[1]).outcome();
+			if (outcome != GeoLocator.Outcome.RETRY_LATER) {
+				throw new AssertionError("HTTP " + transientReply[0] + " must stay retryable, was " + outcome);
 			}
 		}
 
-		for (String pub : new String[]{"mc.hypixel.net", "1.2.3.4", "172.5.5.5"}) {
-			if (!GeoLocator.isPublicAddress(pub)) {
-				throw new AssertionError(pub + " should be eligible for lookup");
+		// Hostnames that merely BEGIN like a private range must still be looked up — the
+		// old prefix check sent fdcraft.net and fcmc.net nowhere, because "fc"/"fd" are
+		// IPv6 unique-local prefixes. Also the control half of the guard below.
+		for (String eligible : new String[]{"mc.hypixel.net", "1.2.3.4", "172.5.5.5", "fdcraft.net", "fcmc.net",
+			"10x.example.org", "2606:4700::1111"}) {
+			if (!GeoLocator.isLookupEligible(eligible)) {
+				throw new AssertionError(eligible + " should be eligible for lookup");
+			}
+		}
+
+		// Private literals, LAN suffixes, and hosts that are not a hostname at all — the
+		// last because the host is spliced into the request URL.
+		for (String ineligible : new String[]{"localhost", "127.0.0.1", "192.168.1.10", "10.0.0.5", "172.16.4.2",
+			"100.64.1.1", "::1", "fe80::1", "fd12:3456::1", "myserver.local", "nas.lan", "x/../y", "a b", "q?x=1"}) {
+			if (GeoLocator.isLookupEligible(ineligible)) {
+				throw new AssertionError(ineligible + " must never be sent to the geolocation service");
 			}
 		}
 	}

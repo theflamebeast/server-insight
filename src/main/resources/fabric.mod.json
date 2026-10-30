@@ -3,7 +3,7 @@
   "id": "serverinsight",
   "version": "${version}",
   "name": "Server Insight",
-  "description": "Client-side /serverinsight command: detailed server + player + world info, TPS estimate, and plugin hints.",
+  "description": "Client-side /serverinsight command: server software, plugins and mods, location, TPS estimate, and player/world details. Adds country flags to the multiplayer server list.",
   "authors": [
     "FlameBeast"
   ],

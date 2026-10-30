@@ -21,7 +21,7 @@ public final class ServerInsightClient implements ClientModInitializer {
 		);
 
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-			ServerInsightRuntime.INSTANCE.resetForJoin();
+			ServerInsightRuntime.INSTANCE.reset();
 
 			// Start the DNS lookup now rather than while formatting the command output,
 			// where it blocked the client thread for however long the resolver took.
@@ -35,7 +35,7 @@ public final class ServerInsightClient implements ClientModInitializer {
 		});
 
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-			ServerInsightRuntime.INSTANCE.resetForDisconnect();
+			ServerInsightRuntime.INSTANCE.reset();
 			LOGGER.info("Disconnected: state reset.");
 		});
 

@@ -2,14 +2,14 @@ package dev.flamebeast.serverinsight.mixin;
 
 import dev.flamebeast.serverinsight.detect.LocationInfo;
 import dev.flamebeast.serverinsight.state.GeoLocator;
-import net.minecraft.ChatFormatting;
+import dev.flamebeast.serverinsight.text.LocationTooltip;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.screens.multiplayer.ServerSelectionList;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,15 +18,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * Draws the host country's flag on each entry in the multiplayer server list, with the
- * full geolocation on hover.
+ * Draws the host country's flag beside each entry in the multiplayer server list, with
+ * the full geolocation on hover.
  *
- * Injected at TAIL so the flag lands on top of the entry vanilla just drew. Everything
- * here has to be cheap and non-blocking: this runs for every visible entry every frame.
+ * Runs for every visible entry every frame, so it must stay cheap and non-blocking.
  * GeoLocator answers from cache or returns null and does the work elsewhere, so a
  * missing flag simply means "not known yet" and the list never stutters.
  */
@@ -36,7 +32,6 @@ public abstract class ServerEntryFlagMixin {
 	@Final
 	private ServerData serverData;
 
-
 	private static final int FLAG_WIDTH = 16;
 	private static final int FLAG_HEIGHT = 12;
 
@@ -44,10 +39,6 @@ public abstract class ServerEntryFlagMixin {
 	private static final int TEXTURE_WIDTH = 32;
 	private static final int TEXTURE_HEIGHT = 24;
 
-	/** Vanilla's scrollbar width. */
-	private static final int SCROLLBAR_WIDTH = 6;
-
-	/** Gap between the scrollbar and the flag. */
 	private static final int GAP_FROM_SCROLLBAR = 4;
 
 	// RETURN, not TAIL. Vanilla leaves extractContent early for a server that is still
@@ -60,18 +51,17 @@ public abstract class ServerEntryFlagMixin {
 			return;
 		}
 
-		String host = ServerAddress.parseString(serverData.ip).getHost();
-		LocationInfo location = GeoLocator.lookup(host);
+		LocationInfo location = GeoLocator.lookup(ServerAddress.parseString(serverData.ip).getHost());
 		if (location == null) {
 			return;
 		}
 
-		// To the right of the SCROLLBAR, clear of the whole list widget. The row's own
-		// right edge is not far enough — rows are narrower than the list, and the
-		// scrollbar sits to the right of both.
+		// Right of the SCROLLBAR, clear of the whole list widget. The row's own right
+		// edge is not far enough — rows are narrower than the list, and the scrollbar
+		// sits to the right of both.
 		EntryGeometryAccessor geometry = (EntryGeometryAccessor) this;
-		int x = ((SelectionListAccessor) geometry.serverinsight$list()).serverinsight$scrollBarX()
-			+ SCROLLBAR_WIDTH + GAP_FROM_SCROLLBAR;
+		AbstractSelectionList<?> list = geometry.serverinsight$list();
+		int x = ((SelectionListAccessor) list).serverinsight$scrollBarX() + list.scrollbarWidth() + GAP_FROM_SCROLLBAR;
 		int y = geometry.serverinsight$contentYMiddle() - FLAG_HEIGHT / 2;
 
 		// The source region must be the WHOLE texture, or this crops instead of scaling.
@@ -88,46 +78,8 @@ public abstract class ServerEntryFlagMixin {
 		);
 
 		if (mouseX >= x && mouseX < x + FLAG_WIDTH && mouseY >= y && mouseY < y + FLAG_HEIGHT) {
-			extractor.setComponentTooltipForNextFrame(Minecraft.getInstance().font, tooltip(location), mouseX, mouseY);
+			extractor.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
+				LocationTooltip.lines(location, GeoLocator.localLocation()), mouseX, mouseY);
 		}
-	}
-
-	private static List<Component> tooltip(LocationInfo location) {
-		List<Component> lines = new ArrayList<>();
-		lines.add(Component.literal(location.describePlace()).withStyle(ChatFormatting.WHITE));
-
-		addLine(lines, "Distance", distanceToLocal(location));
-		addLine(lines, "IP", location.queriedIp());
-		addLine(lines, "ISP", location.isp());
-
-		// Org repeats the ISP often enough that showing both is just noise.
-		if (location.org() != null && !location.org().equals(location.isp())) {
-			addLine(lines, "Org", location.org());
-		}
-
-		addLine(lines, "AS", location.asName());
-		addLine(lines, "Timezone", location.timezone());
-
-		return lines;
-	}
-
-	/** How far the server's address is from the client, or null while it is not known. */
-	private static String distanceToLocal(LocationInfo location) {
-		LocationInfo local = GeoLocator.localLocation();
-		if (local == null) {
-			return null;
-		}
-
-		Double km = location.distanceKm(local);
-		return km == null ? null : Math.round(km) + " km";
-	}
-
-	private static void addLine(List<Component> lines, String label, String value) {
-		if (value == null) {
-			return;
-		}
-
-		lines.add(Component.literal(label + ": ").withStyle(ChatFormatting.GRAY)
-			.append(Component.literal(value).withStyle(ChatFormatting.WHITE)));
 	}
 }

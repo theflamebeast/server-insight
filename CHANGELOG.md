@@ -13,6 +13,17 @@ Starts at 1.2.0 — earlier releases predate this file.
   latest tab-completion request and silently drop older ones, so when a server had more
   than one plugin-listing command (`/version`, `/plugins`, `/pl`…) only the last was
   answered. The mod now asks one command at a time.
+- **Servers whose address starts with "fc" or "fd" never got a flag** (e.g. `fdcraft.net`).
+  Those letters begin a private IPv6 range, and the check mistook the hostname for one.
+- **Starting the game before your connection was up cost every flag for the session.**
+  A failed lookup was remembered as permanent; temporary failures (offline, timeouts,
+  rate limits, hotel-wifi login pages) are now retried after a minute. Same for the
+  distance line.
+
+### Changed
+
+- The `/serverinsight` Location hover now shows exactly what the flag hover shows,
+  including the distance line.
 
 ## 1.2.1
 

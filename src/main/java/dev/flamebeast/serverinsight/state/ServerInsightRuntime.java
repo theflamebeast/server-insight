@@ -22,13 +22,8 @@ public enum ServerInsightRuntime {
 		return addressResolver;
 	}
 
-	public void resetForJoin() {
-		timingTracker.reset();
-		pluginScanner.reset();
-		addressResolver.reset();
-	}
-
-	public void resetForDisconnect() {
+	/** On join AND on disconnect: a reading from the last server is worse than none. */
+	public void reset() {
 		timingTracker.reset();
 		pluginScanner.reset();
 		addressResolver.reset();

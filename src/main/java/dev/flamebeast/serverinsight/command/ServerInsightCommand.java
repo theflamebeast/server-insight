@@ -7,6 +7,7 @@ import dev.flamebeast.serverinsight.detect.ServerSoftware;
 import dev.flamebeast.serverinsight.state.GeoLocator;
 import dev.flamebeast.serverinsight.state.ServerInsightRuntime;
 import dev.flamebeast.serverinsight.text.ChatFormat;
+import dev.flamebeast.serverinsight.text.LocationTooltip;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
@@ -28,6 +29,7 @@ import net.minecraft.server.permissions.Permissions;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.GameType;
 
+import java.net.InetAddress;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,7 +76,7 @@ public final class ServerInsightCommand {
 			printPlayerDetails(source, mc, null);
 			printWorldDetails(source, mc);
 			printTps(source);
-			printPlugins(source, mc, null).whenComplete((ignored, throwable) -> printSupport(source));
+			printPlugins(source, mc, network == null ? null : network.serverBrand()).whenComplete((ignored, throwable) -> printSupport(source));
 			return 1;
 		}
 
@@ -148,7 +150,7 @@ public final class ServerInsightCommand {
 		MutableComponent value = Component.literal(location.describePlace())
 			.setStyle(Style.EMPTY
 				.withColor(TextColor.fromRgb(AQUA_RGB))
-				.withHoverEvent(new HoverEvent.ShowText(locationHover(location)))
+				.withHoverEvent(new HoverEvent.ShowText(LocationTooltip.joined(location, GeoLocator.localLocation())))
 			);
 
 		if (location.isp() != null) {
@@ -157,32 +159,6 @@ public final class ServerInsightCommand {
 		}
 
 		send(source, ChatFormat.kv("Location", value));
-	}
-
-	private static Component locationHover(LocationInfo location) {
-		MutableComponent hover = Component.literal(location.describePlace()).withStyle(ChatFormatting.WHITE);
-
-		appendHoverLine(hover, "IP", location.queriedIp());
-		appendHoverLine(hover, "ISP", location.isp());
-
-		if (location.org() != null && !location.org().equals(location.isp())) {
-			appendHoverLine(hover, "Org", location.org());
-		}
-
-		appendHoverLine(hover, "AS", location.asName());
-		appendHoverLine(hover, "Timezone", location.timezone());
-
-		return hover.append(Component.literal("\nWhere the address points, not necessarily the host")
-			.withStyle(ChatFormatting.DARK_GRAY));
-	}
-
-	private static void appendHoverLine(MutableComponent hover, String label, String value) {
-		if (value == null) {
-			return;
-		}
-
-		hover.append(Component.literal("\n" + label + ": ").withStyle(ChatFormatting.GRAY))
-			.append(Component.literal(value).withStyle(ChatFormatting.WHITE));
 	}
 
 	private static void printSoftware(FabricClientCommandSource source, String brand) {
@@ -337,7 +313,6 @@ public final class ServerInsightCommand {
 		return switch (family) {
 			case VANILLA -> "vanilla server has no plugin system";
 			case MODDED -> "modded server, mods are listed above";
-			case BUKKIT -> "server may hide this";
 			default -> "server may hide this";
 		};
 	}
@@ -363,7 +338,7 @@ public final class ServerInsightCommand {
 			ServerAddress parsed = ServerAddress.parseString(displayAddress);
 			host = parsed.getHost();
 			port = parsed.getPort();
-			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolvedIp(parsed.getHost()), port)));
+			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, host, port)));
 			Component motd = Objects.requireNonNullElse(serverInfo.motd, Component.literal("N/A").withStyle(ChatFormatting.DARK_GRAY));
 			send(source, ChatFormat.kv("MOTD", motd.copy().withStyle(ChatFormatting.GRAY)));
 			send(source, ChatFormat.kv("Version", serverInfo.version.copy().withStyle(ChatFormatting.YELLOW)));
@@ -373,7 +348,7 @@ public final class ServerInsightCommand {
 			displayAddress = parsed.getHost() + ":" + parsed.getPort();
 			host = parsed.getHost();
 			port = parsed.getPort();
-			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, resolvedIp(parsed.getHost()), port)));
+			send(source, ChatFormat.kv("Address", clickableAddress(displayAddress, host, port)));
 		}
 
 		printLocation(source, host);
@@ -473,22 +448,23 @@ public final class ServerInsightCommand {
 		send(source, ChatFormat.kv("Weather", weather));
 	}
 
-	private static MutableComponent clickableAddress(String shown, String resolvedIp, int port) {
-		String copy = shown;
-		String resolvedWithPort = resolvedIp + ":" + port;
-		boolean showResolved = resolvedIp != null && !resolvedIp.equalsIgnoreCase("localhost") && !resolvedIp.equalsIgnoreCase("127.0.0.1") && !resolvedIp.equals(shown.split(":")[0]);
-
+	private static MutableComponent clickableAddress(String shown, String host, int port) {
 		MutableComponent base = Component.literal(shown)
 			.setStyle(Style.EMPTY
 				.withColor(TextColor.fromLegacyFormat(ChatFormatting.GRAY))
-				.withClickEvent(new ClickEvent.CopyToClipboard(copy))
+				.withClickEvent(new ClickEvent.CopyToClipboard(shown))
 				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to copy").withStyle(ChatFormatting.WHITE)))
 			);
 
-		if (!showResolved) {
+		// Whatever the join-time lookup produced; null while it is still in flight, and
+		// never awaited here — that would put DNS back on the client thread. Only worth
+		// showing when it adds something: not an IP the user already typed, not loopback.
+		String resolved = ServerInsightRuntime.INSTANCE.address().resolvedFor(host);
+		if (resolved == null || resolved.equalsIgnoreCase(host) || isLoopback(resolved)) {
 			return base;
 		}
 
+		String resolvedWithPort = (resolved.contains(":") ? "[" + resolved + "]" : resolved) + ":" + port;
 		return base.append(Component.literal("  (").withStyle(ChatFormatting.DARK_GRAY))
 			.append(Component.literal(resolvedWithPort)
 				.setStyle(Style.EMPTY
@@ -499,17 +475,14 @@ public final class ServerInsightCommand {
 			.append(Component.literal(")").withStyle(ChatFormatting.DARK_GRAY));
 	}
 
-	/**
-	 * Whatever the join-time lookup produced. Null while it is still in flight or if it
-	 * failed, in which case the address line just omits the resolved IP — never block
-	 * the client thread here waiting for DNS.
-	 */
-	private static String resolvedIp(String host) {
-		if (host == null || "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "0.0.0.0".equals(host)) {
-			return host;
+	/** Parses the literal only — the resolver hands back an IP string, so no DNS happens here. */
+	private static boolean isLoopback(String ip) {
+		try {
+			InetAddress address = InetAddress.ofLiteral(ip);
+			return address.isLoopbackAddress() || address.isAnyLocalAddress();
+		} catch (IllegalArgumentException notAnAddress) {
+			return false;
 		}
-
-		return ServerInsightRuntime.INSTANCE.address().resolvedFor(host);
 	}
 
 	private static Component difficultyText(Minecraft mc) {

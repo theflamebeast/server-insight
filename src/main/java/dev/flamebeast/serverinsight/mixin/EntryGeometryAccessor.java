@@ -20,17 +20,8 @@ import org.spongepowered.asm.mixin.gen.Invoker;
  */
 @Mixin(targets = "net.minecraft.client.gui.components.AbstractSelectionList$Entry")
 public interface EntryGeometryAccessor {
-	@Invoker("getContentRight")
-	int serverinsight$contentRight();
-
 	@Invoker("getContentYMiddle")
 	int serverinsight$contentYMiddle();
-
-	@Invoker("getX")
-	int serverinsight$x();
-
-	@Invoker("getWidth")
-	int serverinsight$width();
 
 	/** The list this row belongs to, needed to find the scrollbar the row cannot see. */
 	@Accessor("list")

@@ -74,6 +74,21 @@ public record LocationInfo(
 		}
 	}
 
+	/**
+	 * True for a well-formed reply saying the address cannot be placed (a private or
+	 * reserved range, an unknown host) — a final answer. A body that isn't one of these
+	 * replies at all says nothing about the address: a captive portal answers 200 with an
+	 * HTML login page.
+	 */
+	public static boolean isDefinitiveFailure(String json) {
+		try {
+			return JsonParser.parseString(json) instanceof JsonObject object
+				&& "fail".equals(string(object, "status"));
+		} catch (Exception malformed) {
+			return false;
+		}
+	}
+
 	private static String string(JsonObject object, String key) {
 		if (!object.has(key) || object.get(key).isJsonNull()) {
 			return null;

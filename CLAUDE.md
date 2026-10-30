@@ -17,7 +17,7 @@ Shared workflow rules: ~/.claude/CLAUDE.md § Every repo. This file only holds w
 ## Architecture
 
 ```
-ServerInsightClient          entrypoint: command, join/disconnect resets, tick hook, DNS kickoff
+ServerInsightClient          entrypoint: command, reset on join/disconnect, tick hook, DNS kickoff
 command/ServerInsightCommand /serverinsight — reads state, formats, prints. All output lives here.
 state/ServerInsightRuntime   enum singleton; owns all mutable state
 state/TimingTracker          TPS from the gameTime counter in ClientboundSetTimePacket
@@ -28,9 +28,11 @@ detect/ServerMods            pure: server-declared channels -> server-side mod i
 detect/CommandFingerprints   pure: command name -> plugin it implies (a GUESS)
 detect/LocationInfo          pure: geolocation JSON -> where the address points
 state/GeoLocator             the only third-party call: IP -> country, cached + throttled
-mixin/ServerEntryFlagMixin   flag + hover on each multiplayer server list entry
+mixin/ServerEntryFlagMixin   flag + hover beside each multiplayer server list entry
 mixin/EntryGeometryAccessor  interface mixin to reach the entry's layout accessors
+mixin/SelectionListAccessor  invoker for the list's protected scrollBarX()
 text/ChatFormat              branded prefix, gradient header, key/value lines
+text/LocationTooltip         the location hover, shared by the flag and the command
 mixin/…NetworkHandlerMixin   3 injects on ClientPacketListener
 ```
 
@@ -40,7 +42,7 @@ verified — `ServerEntryFlagMixin` shipped broken exactly once for this reason,
 because the server-list entry class only loads when that screen builds a row.
 Any new mixin needs a `Class.forName` on its target in the gametest at minimum.
 
-**Nothing in `detect/` holds state** — both are pure functions over data the
+**Nothing in `detect/` holds state** — all four are pure functions over data the
 client already has, called fresh at command time. Keep them that way; if
 something needs to accumulate across packets, it belongs in `state/`.
 
@@ -48,12 +50,18 @@ something needs to accumulate across packets, it belongs in `state/`.
 that can take unbounded time starts on join and gets read from cache, or runs
 async like the plugin scan.
 
+**Never block the shared ForkJoin pool either.** A bare `supplyAsync(...)` runs
+on the common pool — a handful of threads the game and other mods also use — and
+both DNS and the geolocation HTTP call used to sit on it for seconds. Blocking
+IO goes on `Util.nonCriticalIoPool()`; HTTP uses `HttpClient.sendAsync`, which
+waits on the client's own executor.
+
 Data flow is one-directional: **mixin → `ServerInsightRuntime` → command reads it.**
 The mixin never formats and the command never touches packets. Keep it that way.
 
 - **All mutable state hangs off `ServerInsightRuntime.INSTANCE`.** If you add
-  state, it goes there and it gets cleared in *both* `resetForJoin()` and
-  `resetForDisconnect()`. Stale state leaking across a server switch is the
+  state, it goes there and it gets cleared in `reset()`, which runs on join *and*
+  on disconnect. Stale state leaking across a server switch is the
   obvious failure mode for a mod like this — a TPS reading from the last server
   is worse than no reading.
 - **Anything needing a countdown hangs off `tick()`**, driven by
@@ -64,6 +72,18 @@ The mixin never formats and the command never touches packets. Keep it that way.
   state or sending chat — `ServerInsightCommand.printPlugins` already does.
 
 ## Conventions
+
+**One implementation each.** A diff that adds a second copy of any of these is a
+bug — the location hover had two, and they had already drifted.
+
+| Concern | The one place |
+|---|---|
+| A chat line with the branded prefix | `text/ChatFormat` |
+| Describing a geolocation (place, distance, IP, ISP…) | `text/LocationTooltip` |
+| Any request to the geolocation endpoint, and its cache | `state/GeoLocator` |
+| Anything sent to the Minecraft server | `state/PluginScanner` |
+| Mutable per-connection state, and clearing it | `state/ServerInsightRuntime` |
+| Brand string → software family | `detect/ServerSoftware` |
 
 - **Tabs, not spaces**, in both Java and Gradle files. Match the surrounding file.
 - **All chat output goes through `ChatFormat`** (`kv`, `header`, `prefix`). Never
@@ -107,13 +127,21 @@ The server-list flags need an IP-to-country lookup, which means calling a
 third-party HTTP API. That is a different kind of outbound traffic from
 everything else here, and the rules around it are not negotiable:
 
-- **Only look up addresses the user is actually looking at**, and cache the
-  result — successes *and* failures — for the session. `GeoLocator.lookup()` is
-  called from a render path, so an uncached failure would otherwise fire a
-  request every frame.
-- **Never send private or loopback addresses.** `isPublicAddress()` filters
+- **Only look up addresses the user is actually looking at**, and cache every
+  answer. `GeoLocator.lookup()` is called from a render path, so an uncached
+  failure would fire a request every frame. But only a well-formed `"fail"` reply
+  is final for the session; anything else (offline, timeout, 429, a captive
+  portal's 200 HTML page) parks the host for `RETRY_AFTER_MILLIS`. Caching those
+  permanently is what used to cost every flag for the session if the game
+  started before the network was up. `GeoLocator.interpret` is the one place
+  that decides, and it is pure so the gametest pins it offline.
+- **Never send private or loopback addresses.** `isLookupEligible()` filters
   them. A LAN address cannot be geolocated anyway, so sending it leaks the shape
-  of someone's home network in exchange for a guaranteed failure.
+  of someone's home network in exchange for a guaranteed failure. Ranges are
+  checked on the **parsed** IP literal, never by string prefix against a
+  hostname — prefix-matching `"fd"` (IPv6 unique-local) is what silently dropped
+  every flag for hosts like `fdcraft.net`. It also rejects anything that isn't
+  hostname-shaped, because the host is spliced into the request URL.
 - **Throttle below the published quota** (45/min; the code sits at 40) and park
   everything on a 429. A server list can hold far more entries than the quota.
 - **Never block a render or the client thread on it.** `lookup()` returns cached
