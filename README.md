@@ -55,7 +55,7 @@ well it's ticking. One command, no server-side install.
 ## Compatibility
 - **Loader**: Fabric
 - **Environment**: Client
-- **Minecraft**: 26.2
+- **Minecraft**: 26.3
 - **Java**: 25+
 
 ## Preview

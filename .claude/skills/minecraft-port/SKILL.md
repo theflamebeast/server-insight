@@ -31,14 +31,14 @@ tested against:
   porting guide links it; Fabric does not maintain its own list)
 
 **Java version comes from Minecraft, not from us.** Check what the release
-requires before touching anything — `26.1` and `26.2` are both Java 25. Only
+requires before touching anything — `26.1`, `26.2` and `26.3` are all Java 25. Only
 change the Java level if Mojang moved it.
 
 **Don't jump ahead of the ecosystem.** If the newest stable Minecraft has no
 Fabric API build yet, stop and say so — bumping Minecraft alone produces a
 build that resolves but ships against an API that doesn't exist for it.
 
-## 2. Change the five files — they must all agree
+## 2. Change the six files — they must all agree
 
 | File | Field |
 |---|---|
@@ -46,6 +46,7 @@ build that resolves but ships against an API that doesn't exist for it.
 | `build.gradle` | `net.fabricmc.fabric-loom` plugin version; `options.release` + `sourceCompatibility`/`targetCompatibility` **only if Java moved** |
 | `gradle/wrapper/gradle-wrapper.properties` | `distributionUrl` |
 | `src/main/resources/fabric.mod.json` | `depends.minecraft`, `depends.fabricloader`, `depends.java` |
+| `src/gametest/resources/fabric.mod.json` | the same three — the test mod declares its own depends, and a stale one still loads but lies |
 | `README.md` | the **Compatibility** section |
 
 Two more, only when the Java level changes:

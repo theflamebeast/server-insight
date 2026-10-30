@@ -3,6 +3,17 @@
 Notable changes per release, written for players rather than for the commit log.
 Starts at 1.2.0 — earlier releases predate this file.
 
+## Unreleased
+
+**Minecraft 26.3.** Requires Fabric Loader 0.20.1+ and Java 25+.
+
+### Fixed
+
+- **Plugin list from `/version` was lost on 26.3 servers.** 26.3 servers only answer the
+  latest tab-completion request and silently drop older ones, so when a server had more
+  than one plugin-listing command (`/version`, `/plugins`, `/pl`…) only the last was
+  answered. The mod now asks one command at a time.
+
 ## 1.2.1
 
 **Minecraft 26.2.** Requires Fabric Loader 0.19.3+ and Java 25+.

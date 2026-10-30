@@ -21,7 +21,7 @@ ServerInsightClient          entrypoint: command, join/disconnect resets, tick h
 command/ServerInsightCommand /serverinsight — reads state, formats, prints. All output lives here.
 state/ServerInsightRuntime   enum singleton; owns all mutable state
 state/TimingTracker          TPS from the gameTime counter in ClientboundSetTimePacket
-state/PluginScanner          plugin detection (command tree + one tab-completion probe)
+state/PluginScanner          plugin detection (command tree, sequential tab-completion probes, fingerprints)
 state/AddressResolver        async DNS, started on join so the command never blocks
 detect/ServerSoftware        pure: brand string -> Paper/Fabric/vanilla/proxy + family
 detect/ServerMods            pure: server-declared channels -> server-side mod ids
@@ -131,16 +131,22 @@ The mod is passive except for tab-completion probes: one
 `ServerboundCommandSuggestionPacket` per plugin-listing alias the server actually
 advertised (`/version`, `/plugins`, `/pl`, `/about`, the `bukkit:` and `paper:`
 forms), capped at `MAX_PROBES`, fired **only** when the user runs the command,
-with a shared 100-tick timeout.
+**one at a time**, each with its own `PROBE_TIMEOUT_TICKS`.
 
-Two rules that are easy to break when touching this:
+Three rules that are easy to break when touching this:
 
 - **Only probe aliases present in the command tree.** Never send speculative
   probes for commands the server never advertised — that is unbounded packets for
   guaranteed-empty replies.
-- **The scan completes when every probe has answered**, not on the first reply. A
-  fast empty `/pl` response must not cut off the slower `/version` reply that
-  carries the actual list.
+- **Never send probes concurrently.** Since 26.3 the server keeps ONE pending
+  suggestion request per player and overwrites it (`ServerCommandSuggestionsProvider
+  .request` does a `getAndSet`) — built for chat typing, where only the latest
+  keystroke matters. Firing every probe in the same tick lost all but the last, and
+  the one dropped was `/version`, the probe that carries the plugin list. The next
+  probe goes out only when the previous one answers or times out.
+- **The scan completes when every probe has answered or timed out**, not on the
+  first reply. A fast empty `/pl` response must not cut off the `/version` reply
+  that carries the actual list.
 
 That restraint is a design rule, not a fear of detection — the developer's
 position is that server-side plugins can't meaningfully fingerprint a client
@@ -193,7 +199,8 @@ before starting a bump rather than rediscovering the endpoints.
 
 Current targets live in `gradle.properties`, `build.gradle` (Loom),
 `gradle/wrapper/gradle-wrapper.properties` (Gradle), `src/main/resources/fabric.mod.json`
-(declared `depends`) and `README.md` (the Compatibility section). All five must agree.
+and `src/gametest/resources/fabric.mod.json` (declared `depends`), and `README.md` (the
+Compatibility section). All six must agree.
 
 ## Workflow
 

@@ -143,10 +143,11 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 	}
 
 	/**
-	 * Runs the command the way a user does, then waits for tab-completion results to
-	 * land. Completion results can only appear if the command executed, reached
-	 * printPlugins, sent the suggestion packet, and handleCommandSuggestions fed the
-	 * reply back — so this single wait covers the whole async path plus the third mixin.
+	 * Runs the command the way a user does, then waits for its LAST line. The support
+	 * line is only printed once the plugin scan has finished, so waiting for it covers
+	 * the whole async path and the third mixin. Waiting for the first completion result
+	 * instead raced the probes: probes are sequential, so it fired after /version and
+	 * asserted before /plugins had been sent.
 	 */
 	private static void assertCommandRunsAndCompletesScan(ClientGameTestContext context) {
 		CapturedChat.clear();
@@ -157,7 +158,7 @@ public final class ServerInsightGameTest implements FabricClientGameTest {
 		input.typeChars("/serverinsight");
 		input.pressKey(InputConstants.KEY_RETURN);
 
-		context.waitFor(mc -> ServerInsightRuntime.INSTANCE.plugins().completionCount() > 0, SLOW_TIMEOUT);
+		context.waitFor(mc -> CapturedChat.hasLineContaining("Support:"), SLOW_TIMEOUT);
 
 		Set<String> detected = context.computeOnClient(mc -> ServerInsightRuntime.INSTANCE.plugins().combinedPlugins());
 

@@ -1,7 +1,5 @@
-
 plugins {
-	id 'net.fabricmc.fabric-loom' version '1.17.17'
-	id 'maven-publish'
+	id 'net.fabricmc.fabric-loom' version '1.19.3'
 }
 
 version = project.mod_version
@@ -39,17 +37,18 @@ tasks.named('build') {
 	dependsOn 'gametestClasses'
 }
 
+// Values are read back through task inputs, not `project`: touching `project` while a
+// task executes is deprecated and becomes an error in Gradle 10.
 processResources {
 	inputs.property 'version', project.version
 	filesMatching('fabric.mod.json') {
-		expand version: project.version
+		expand version: inputs.properties.version
 	}
 }
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
 }
-
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_25
@@ -58,7 +57,8 @@ java {
 }
 
 jar {
+	inputs.property 'archivesName', project.base.archivesName
 	from('LICENSE') {
-		rename { "${it}_${project.archives_base_name}" }
+		rename { "${it}_${inputs.properties.archivesName}" }
 	}
 }

@@ -8,14 +8,12 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
 import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
@@ -31,8 +29,8 @@ import java.util.regex.Pattern;
  * 3. Command-name fingerprints ("/lp" -> LuckPerms). Passive, and a GUESS — kept in
  *    its own bucket so the output can present it at lower confidence.
  *
- * All of it is bounded and one-shot per command invocation: no background polling, and
- * the probes only target aliases the server actually advertised in its command tree.
+ * Client thread only: the command, the tick hook and the packet handlers (injected at
+ * TAIL, past the netty-thread deferral) all run there, so nothing here is synchronized.
  */
 public final class PluginScanner {
 	/** Commands that list plugins when tab-completed. Probed only if the server has them. */
@@ -45,23 +43,30 @@ public final class PluginScanner {
 	/** Keeps one command from turning into a dozen packets on a server with many aliases. */
 	private static final int MAX_PROBES = 6;
 
-	private static final int TIMEOUT_TICKS = 100;
+	/**
+	 * Per probe, not per scan. A reply normally lands within a tick or two; this only
+	 * matters for a server that drops a probe, which then costs the user this long
+	 * before the next alias is tried.
+	 */
+	private static final int PROBE_TIMEOUT_TICKS = 30;
 
 	/** Rejects suggestion text that cannot plausibly be a plugin name. */
 	private static final Pattern PLUGIN_NAME = Pattern.compile("[A-Za-z0-9_.\\-]{2,40}");
 
-	private final Set<String> fromCommandTree = Collections.synchronizedSet(new HashSet<>());
-	private final Set<String> fromCompletionScan = Collections.synchronizedSet(new HashSet<>());
-	private final Set<String> fromFingerprint = Collections.synchronizedSet(new LinkedHashSet<>());
+	private final Set<String> fromCommandTree = new HashSet<>();
+	private final Set<String> fromCompletionScan = new HashSet<>();
+	private final Set<String> fromFingerprint = new LinkedHashSet<>();
 
 	/** Probe aliases the server advertised, in the order they appeared. */
-	private final List<String> probeAliases = Collections.synchronizedList(new ArrayList<>());
+	private final List<String> probeAliases = new ArrayList<>();
 
 	private final Random random = new Random();
 
-	/** In-flight probes, transaction id -> the alias it was sent for. */
-	private final Map<Integer, String> pendingProbes = Collections.synchronizedMap(new HashMap<>());
+	/** Aliases still to be probed in the running scan. */
+	private final ArrayDeque<String> probeQueue = new ArrayDeque<>();
 
+	/** Transaction id of the one probe in flight, or 0 when none is. */
+	private int inFlightId = 0;
 	private int timeoutTicks = 0;
 	private CompletableFuture<List<String>> pendingFuture = null;
 
@@ -70,26 +75,18 @@ public final class PluginScanner {
 		fromCompletionScan.clear();
 		fromFingerprint.clear();
 		probeAliases.clear();
-		pendingProbes.clear();
-		timeoutTicks = 0;
-
-		if (pendingFuture != null && !pendingFuture.isDone()) {
-			pendingFuture.complete(List.of());
-		}
-
-		pendingFuture = null;
+		finishScan();
 	}
 
 	public void tick() {
-		if (pendingFuture == null || pendingFuture.isDone()) {
+		if (inFlightId == 0) {
 			return;
 		}
 
-		timeoutTicks--;
-		if (timeoutTicks <= 0) {
-			// Whatever answered in time still counts; a server that ignores one probe
-			// must not cost the user the results of the others.
-			finishScan();
+		if (--timeoutTicks <= 0) {
+			// A probe the server never answered costs only itself; move on rather than
+			// losing the aliases still queued behind it.
+			sendNextProbe();
 		}
 	}
 
@@ -131,69 +128,68 @@ public final class PluginScanner {
 	}
 
 	public void onCommandSuggestions(ClientboundCommandSuggestionsPacket packet) {
-		if (packet == null || pendingFuture == null || pendingFuture.isDone()) {
-			return;
-		}
-
-		if (pendingProbes.remove(packet.id()) == null) {
+		if (packet == null || inFlightId == 0 || packet.id() != inFlightId) {
 			return;
 		}
 
 		packet.suggestions().forEach(suggestion -> {
 			String text = suggestion.text();
-			if (!isPlausiblePluginName(text)) {
-				return;
+			if (isPlausiblePluginName(text)) {
+				fromCompletionScan.add(text.toLowerCase(Locale.ROOT));
 			}
-
-			fromCompletionScan.add(text.toLowerCase(Locale.ROOT));
 		});
 
-		// Only done once every probe has answered — otherwise a fast /pl reply would
-		// cut off the slower /version reply that carries the actual plugin list.
-		if (pendingProbes.isEmpty()) {
-			finishScan();
-		}
+		sendNextProbe();
 	}
 
 	public CompletableFuture<List<String>> requestCompletionScan() {
-		Minecraft client = Minecraft.getInstance();
-		ClientPacketListener network = client.getConnection();
-
-		if (network == null) {
-			return CompletableFuture.completedFuture(List.of());
-		}
-
-		if (pendingFuture != null && !pendingFuture.isDone()) {
+		if (pendingFuture != null) {
 			return CompletableFuture.failedFuture(new IllegalStateException("Plugin scan already running"));
 		}
 
-		List<String> aliases = List.copyOf(probeAliases);
-		if (aliases.isEmpty()) {
+		if (Minecraft.getInstance().getConnection() == null || probeAliases.isEmpty()) {
 			return CompletableFuture.completedFuture(List.of());
 		}
 
 		fromCompletionScan.clear();
-		pendingProbes.clear();
-		timeoutTicks = TIMEOUT_TICKS;
+		probeQueue.addAll(probeAliases);
 		pendingFuture = new CompletableFuture<>();
 
-		for (String alias : aliases) {
-			int transactionId = random.nextInt(Integer.MAX_VALUE - 1) + 1;
-			pendingProbes.put(transactionId, alias);
-			network.send(new ServerboundCommandSuggestionPacket(transactionId, alias + " "));
+		CompletableFuture<List<String>> scan = pendingFuture;
+		sendNextProbe();
+		return scan;
+	}
+
+	/**
+	 * One probe at a time. Since 26.3 the server keeps a single pending-suggestion slot
+	 * per player and overwrites it (ServerCommandSuggestionsProvider.request does a
+	 * getAndSet), because for chat typing only the latest keystroke matters. Probes sent
+	 * in the same tick therefore lost all but the last — and the one dropped was
+	 * /version, the probe that actually carries the plugin list.
+	 */
+	private void sendNextProbe() {
+		ClientPacketListener network = Minecraft.getInstance().getConnection();
+		String alias = probeQueue.pollFirst();
+
+		if (network == null || alias == null) {
+			finishScan();
+			return;
 		}
 
-		return pendingFuture;
+		inFlightId = random.nextInt(Integer.MAX_VALUE - 1) + 1;
+		timeoutTicks = PROBE_TIMEOUT_TICKS;
+		network.send(new ServerboundCommandSuggestionPacket(inFlightId, alias + " "));
 	}
 
 	private void finishScan() {
-		pendingProbes.clear();
+		probeQueue.clear();
+		inFlightId = 0;
 		timeoutTicks = 0;
 
 		CompletableFuture<List<String>> future = pendingFuture;
 		pendingFuture = null;
 
-		if (future != null && !future.isDone()) {
+		if (future != null) {
 			future.complete(List.copyOf(fromCompletionScan));
 		}
 	}
@@ -245,10 +241,5 @@ public final class PluginScanner {
 
 	public int guessCount() {
 		return guessedPlugins().size();
-	}
-
-	/** How many probes this server's command tree makes available. */
-	public int probeCount() {
-		return probeAliases.size();
 	}
 }
