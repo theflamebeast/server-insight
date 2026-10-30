@@ -47,9 +47,9 @@ jobs:
   # since that failure is invisible to the compiler.
   client-gametest:
     runs-on: ubuntu-latest
-    # A normal run is a few minutes. When Minecraft cannot create ANY render backend it
-    # raises a fatal-error dialog, and on a headless runner nothing ever dismisses it —
-    # without this the job sits until GitHub's 6-hour limit.
+    # A normal run is a few minutes. When Minecraft cannot create ANY render backend
+    # it hangs at startup instead of exiting — without this the job sits until
+    # GitHub's 6-hour limit.
     timeout-minutes: 20
 
     steps:
@@ -65,11 +65,13 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # No Xvfb, deliberately. Since 26.3 the window comes from SDL3, which falls back to
-      # an offscreen driver when there is no display at all. Under Xvfb it found no
-      # matching GLX visual, so OpenGL failed — and with no Vulkan driver installed,
-      # every backend failed. Mesa's lavapipe gives Vulkan in software, since runners
-      # have no GPU. This matches Fabric API's own 26.3 client-gametest job.
+      # Since 26.3 the window comes from SDL3, and on this runner OpenGL fails at startup
+      # ("Couldn't find matching GLX visual") with or without xvfb-run — the image
+      # already provides a display. Minecraft then falls back to Vulkan, and with no
+      # Vulkan driver installed every backend failed and the job hung. Mesa's lavapipe
+      # is Vulkan in software (the log shows "Using graphics backend Vulkan ...
+      # llvmpipe"). xvfb-run went with it: it no longer bought anything, and Fabric
+      # API's own 26.3 client-gametest job runs without it.
       - name: Install software Vulkan
         run: |
           sudo apt-get update

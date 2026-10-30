@@ -245,8 +245,8 @@ Compatibility section). All six must agree.
 server, plays through a join, runs the command and asserts on the result. It is
 slow and it is the only check that can fail for the reason this mod actually
 breaks — run it before calling any change to detection, formatting, or the
-Minecraft version done. CI runs it headless on every push — no Xvfb since 26.3:
-SDL3 renders offscreen with Mesa's software Vulkan (see the comment in `build.yml`).
+Minecraft version done. CI runs it on every push. Since 26.3 OpenGL fails on the runner and the client
+falls back to Mesa's software Vulkan — see the comment in `build.yml`.
 
 - **Use `./gradlew`, never a bare `javac`/`java`.** `java` on PATH here is 24;
   `JAVA_HOME` points at Adoptium **25**, which is what the build needs. The
