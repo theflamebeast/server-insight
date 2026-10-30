@@ -123,6 +123,19 @@ Permissions (`PermissionSet` / `Permissions.COMMANDS_*`) and identifier accessor
 (`dimension().identifier()`, `unwrapKey()`) are the other two spots that have
 moved historically — check them if the build reddens there.
 
+Two that only show up at runtime, both hit on the 26.3 port:
+
+- **Server-side behaviour changes, not just client API.** 26.3 made the server keep
+  one pending suggestion request per player and overwrite older ones, which silently
+  broke concurrent probes. A green build and present mixin targets said nothing; only
+  the gametest's plugin assertions caught it. When a probe assertion fails, `javap -c`
+  the server's suggestion handler in both versions and diff it before touching the test.
+- **CI's render backend.** The CI gametest runs on software rendering. If the job
+  *hangs* rather than fails after a bump, cancel it and read the log for `Failed to
+  create backend` — when every backend fails, the client hangs at startup instead of
+  exiting. Compare against Fabric API's own `client_test` job for that version
+  (`.github/workflows/build.yml` on its version branch), which is the known-good setup.
+
 ## 5. Reclaim the disk the old version is now holding
 
 Every bump strands roughly **220 MB** of Loom cache that nothing will ever read
