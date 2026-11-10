@@ -3,7 +3,7 @@
 Notable changes per release, written for players rather than for the commit log.
 Starts at 1.2.0 — earlier releases predate this file.
 
-## Unreleased
+## 1.3.0
 
 **Minecraft 26.3.** Requires Fabric Loader 0.20.1+ and Java 25+.
 
@@ -24,6 +24,10 @@ Starts at 1.2.0 — earlier releases predate this file.
 
 - The `/serverinsight` Location hover now shows exactly what the flag hover shows,
   including the distance line.
+- Your own location (for the distance line) is now looked up as soon as any flag is
+  shown, rather than the first time you hover one. It is still one lookup per session.
+  Before, opening the server list without hovering left `/serverinsight` with no
+  distance at all.
 
 ## 1.2.1
 

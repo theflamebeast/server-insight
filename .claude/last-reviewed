@@ -14,11 +14,17 @@
 # unfixed area is not a passed gate. Delete one only when its fix is committed.
 # (This header deliberately does not start with the marker, so the grep that
 # collects those blocks does not match the instructions describing them.)
-1410dd7
+6f741f1
 
-# OPEN: this baseline means "tracking starts here", NOT "everything before it
-#   passed". 1410dd7 was simply HEAD when tracking began, and no /code-review is
-#   recorded as ever having run on this repo.
+# Trial log (which reviewer finds real bugs):
+#   2026-11-10  /codex:review --base 1410dd7 (up to 6f741f1, 10 commits, 25 files):
+#     1 real bug, P2 — the command's location hover could permanently lack the
+#     distance line, because the client's own location was only requested on a
+#     flag HOVER. Reproduced in the gametest, fixed in the 1.3.0 commit.
+
+# OPEN: code from before 1410dd7 has never been reviewed. 1410dd7 was simply HEAD
+#   when tracking began, and the Codex run above covered only the diff since it,
+#   not the code that was already there.
 #   It ships to real users on Modrinth and a bad mixin crashes a client on
 #   launch, so the mixins and the detection tiers are where a first run pays:
 #     /code-review max 1410dd7

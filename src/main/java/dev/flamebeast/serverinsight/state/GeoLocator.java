@@ -103,6 +103,12 @@ public final class GeoLocator {
 			return null;
 		}
 
+		// Warm the client's own location the moment any location is shown. The distance
+		// line needs it, and a hover is built once: when only hovering asked for it, the
+		// server list cached every server but never the client, so the first command's
+		// hover went out without a distance and could never gain one.
+		localLocation();
+
 		return cachedOrRequest(host.toLowerCase(Locale.ROOT));
 	}
 
