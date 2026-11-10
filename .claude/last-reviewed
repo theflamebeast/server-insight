@@ -27,6 +27,9 @@
 #   not the code that was already there.
 #   It ships to real users on Modrinth and a bad mixin crashes a client on
 #   launch, so the mixins and the detection tiers are where a first run pays:
-#     /code-review max 1410dd7
-#   (level + an explicit base ref. Paths are not a documented argument; name the
-#   mixin and detect packages in words instead.)
+#     /codex:review --base fcbd81c
+#   fcbd81c is the root commit (1.0.0). Every one of the 21 Java files has
+#   changed since it (+2294/-331), so this range covers the whole codebase.
+#   (This block used to say `/code-review max 1410dd7`. That was wrong: a sha
+#   given to /code-review is the ONE commit it reviews, and 1410dd7 only
+#   changes CLAUDE.md. Delete this block once the range above has been run.)
