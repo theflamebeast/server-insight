@@ -315,6 +315,10 @@ it passed.
 **Skills for the line-up here:** `minecraft-port`.
 
 - **`origin` is `theflamebeast/server-insight`, branch `main`.**
+- **Releases go to Modrinth only.** Each shipped version gets a
+  `v<mod_version>` tag on the commit the jar was built from, and no GitHub
+  release: a second download page goes stale (1.2.0's sat there as "Latest"
+  after 1.3.0 shipped) and points users at the wrong jar.
 
 ### Review
 

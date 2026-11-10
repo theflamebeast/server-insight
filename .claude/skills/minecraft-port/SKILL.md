@@ -1,6 +1,6 @@
 ---
 name: minecraft-port
-description: Bump Server Insight to a new Minecraft release — which version numbers to look up and where, the five files that must agree, and how to verify the mixins still apply. Use when asked to update/port/upgrade to a new Minecraft version, to bump Fabric API / Fabric Loader / Loom / Gradle / Java, or when the build breaks after a version change.
+description: Bump Server Insight to a new Minecraft release — which version numbers to look up and where, the six files that must agree, and how to verify the mixins still apply. Use when asked to update/port/upgrade to a new Minecraft version, to bump Fabric API / Fabric Loader / Loom / Gradle / Java, or when the build breaks after a version change.
 ---
 
 # Porting to a new Minecraft version
