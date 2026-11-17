@@ -12,9 +12,10 @@ This file only points. Read both of these before doing anything in this repo:
    and suggest follow-ups without starting them.
 
 `CLAUDE.md` is written for Claude Code, so it names Claude tools
-(`AskUserQuestion`, the `Skill` tool, `/code-review`). Read those as the intent
-and use your own equivalent: ask the user, follow the named procedure, and hand
-the review to the owner rather than claiming it passed.
+(`AskUserQuestion`, the `Skill` tool). Read those as the intent and use your own
+equivalent: ask the user, and follow the named procedure (a skill is a file in
+`.claude/skills/<name>/SKILL.md`). Never claim a review passed that you did not
+run.
 
 Nothing else belongs in this file. A second copy of the facts drifts; change
 `CLAUDE.md` instead.
